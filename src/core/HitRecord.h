@@ -13,6 +13,7 @@ public:
     Vec3 normal;
     double t = 0.0;
     const Material* material = nullptr;
+    int hitObjectId = -1;
     bool frontFace = true;
 
     void setFaceNormal(const Ray& ray, const Vec3& outwardNormal)

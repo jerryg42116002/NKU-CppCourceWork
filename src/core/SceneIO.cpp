@@ -104,6 +104,7 @@ bool SceneIO::saveToFile(const Scene& scene,
     camera["fov"] = scene.camera.fieldOfViewYDegrees;
     camera["aspectRatio"] = scene.camera.aspectRatio;
     root["camera"] = camera;
+    root["selectedObjectId"] = scene.selectedObjectId;
 
     QJsonObject renderSettings;
     renderSettings["width"] = settings.width;
@@ -118,6 +119,7 @@ bool SceneIO::saveToFile(const Scene& scene,
         if (const auto* sphere = dynamic_cast<const Sphere*>(object.get())) {
             QJsonObject item;
             item["type"] = "Sphere";
+            item["id"] = sphere->id();
             item["center"] = vecToJson(sphere->center);
             item["radius"] = sphere->radius;
             item["material"] = materialToJson(sphere->material);
@@ -125,6 +127,7 @@ bool SceneIO::saveToFile(const Scene& scene,
         } else if (const auto* plane = dynamic_cast<const Plane*>(object.get())) {
             QJsonObject item;
             item["type"] = "Plane";
+            item["id"] = plane->id();
             item["point"] = vecToJson(plane->point);
             item["normal"] = vecToJson(plane->normal);
             item["material"] = materialToJson(plane->material);
@@ -179,6 +182,7 @@ bool SceneIO::loadFromFile(const QString& fileName,
     loadedScene.camera.up = vecFromJson(camera.value("up").toObject(), loadedScene.camera.up);
     loadedScene.camera.fieldOfViewYDegrees = camera.value("fov").toDouble(loadedScene.camera.fieldOfViewYDegrees);
     loadedScene.camera.aspectRatio = camera.value("aspectRatio").toDouble(loadedScene.camera.aspectRatio);
+    loadedScene.selectedObjectId = root.value("selectedObjectId").toInt(-1);
 
     const QJsonObject renderSettings = root.value("renderSettings").toObject();
     settings.width = renderSettings.value("width").toInt(settings.width);
@@ -194,15 +198,19 @@ bool SceneIO::loadFromFile(const QString& fileName,
         const Material material = materialFromJson(item.value("material").toObject());
 
         if (type == "Sphere") {
-            loadedScene.addSphere(Sphere(
+            Sphere sphere(
                 vecFromJson(item.value("center").toObject(), Vec3(0.0, 0.0, 0.0)),
                 item.value("radius").toDouble(1.0),
-                material));
+                material);
+            sphere.setId(item.value("id").toInt(sphere.id()));
+            loadedScene.addSphere(sphere);
         } else if (type == "Plane") {
-            loadedScene.addPlane(Plane(
+            Plane plane(
                 vecFromJson(item.value("point").toObject(), Vec3(0.0, 0.0, 0.0)),
                 vecFromJson(item.value("normal").toObject(), Vec3(0.0, 1.0, 0.0)),
-                material));
+                material);
+            plane.setId(item.value("id").toInt(plane.id()));
+            loadedScene.addPlane(plane);
         }
     }
 

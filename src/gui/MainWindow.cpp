@@ -21,10 +21,13 @@
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include "core/SceneIO.h"
+#include "core/Sphere.h"
+#include "gui/GLPreviewWidget.h"
 #include "gui/RenderWidget.h"
 #include "gui/ScenePanel.h"
 
@@ -36,8 +39,17 @@ MainWindow::MainWindow(QWidget* parent)
     setMinimumSize(860, 520);
     scene_ = tinyray::Scene::createDefaultScene();
 
-    renderWidget_ = new RenderWidget(this);
-    setCentralWidget(renderWidget_);
+    centralTabs_ = new QTabWidget(this);
+    glPreviewWidget_ = new GLPreviewWidget(centralTabs_);
+    renderWidget_ = new RenderWidget(centralTabs_);
+    glPreviewWidget_->setScene(scene_);
+    connect(glPreviewWidget_, &GLPreviewWidget::objectSelected,
+            this, &MainWindow::handlePreviewObjectSelected);
+    connect(glPreviewWidget_, &GLPreviewWidget::sphereMoved,
+            this, &MainWindow::handlePreviewSphereMoved);
+    centralTabs_->addTab(glPreviewWidget_, QStringLiteral("Preview"));
+    centralTabs_->addTab(renderWidget_, QStringLiteral("Render Result"));
+    setCentralWidget(centralTabs_);
 
     createMenus();
     createControlPanel();
@@ -245,6 +257,7 @@ void MainWindow::handleRender()
     const tinyray::RenderSettings settings = currentRenderSettings();
     const tinyray::Scene scene = scene_;
 
+    centralTabs_->setCurrentWidget(renderWidget_);
     setRenderControlsEnabled(false);
     QApplication::setOverrideCursor(Qt::WaitCursor);
     statusLabel_->setText(QStringLiteral("Sample 0/%1 | 0% | 0.0s").arg(settings.samplesPerPixel));
@@ -374,6 +387,8 @@ void MainWindow::handleLoadScene()
 
     scene_ = loadedScene;
     scenePanel_->setScene(scene_);
+    scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
+    glPreviewWidget_->setScene(scene_);
     applyRenderSettings(loadedSettings);
     renderWidget_->clearImage();
     progressBar_->setValue(0);
@@ -394,8 +409,43 @@ void MainWindow::handleAbout()
 
 void MainWindow::handleSceneChanged(const tinyray::Scene& scene)
 {
+    const int previousSelection = scene_.selectedObjectId;
     scene_ = scene;
+    if (previousSelection >= 0 && scene_.containsObjectId(previousSelection)) {
+        scene_.selectedObjectId = previousSelection;
+    } else if (scene_.selectedObjectId >= 0 && !scene_.containsObjectId(scene_.selectedObjectId)) {
+        scene_.selectedObjectId = -1;
+    }
+
+    glPreviewWidget_->setScene(scene_);
+    scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
     statusLabel_->setText(QStringLiteral("Scene updated"));
+}
+
+void MainWindow::handlePreviewObjectSelected(int objectId)
+{
+    scene_.selectedObjectId = objectId;
+    scenePanel_->setSelectedObjectId(objectId);
+    if (objectId < 0) {
+        statusLabel_->setText(QStringLiteral("Selection cleared"));
+        return;
+    }
+
+    statusLabel_->setText(QStringLiteral("Selected %1").arg(scene_.objectLabel(objectId)));
+}
+
+void MainWindow::handlePreviewSphereMoved(int objectId, double x, double y, double z)
+{
+    auto* sphere = dynamic_cast<tinyray::Sphere*>(scene_.objectById(objectId));
+    if (sphere == nullptr) {
+        return;
+    }
+
+    sphere->center = tinyray::Vec3(x, y, z);
+    scene_.selectedObjectId = objectId;
+    scenePanel_->setScene(scene_);
+    scenePanel_->setSelectedObjectId(objectId);
+    statusLabel_->setText(QStringLiteral("Moved %1").arg(scene_.objectLabel(objectId)));
 }
 
 void MainWindow::updateRenderProgress(int progress)

@@ -19,6 +19,7 @@ public:
     explicit ScenePanel(QWidget* parent = nullptr);
 
     void setScene(const tinyray::Scene& scene);
+    void setSelectedObjectId(int objectId);
     tinyray::Scene scene() const;
 
 signals:

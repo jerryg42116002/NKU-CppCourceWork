@@ -101,6 +101,23 @@ TinyRay Studio 是 Qt Widgets 程序，不依赖 DirectX 渲染管线。
 
 窗口可以拖动边缘自行调整大小。窗口较小时，右侧控制面板可以滚动。
 
+## 5.1 OpenGL 实时预览
+
+中央区域包含两个标签页：
+
+- `Preview`：OpenGL 实时预览，用于快速查看当前 Scene 和动态调整观察视角；
+- `Render Result`：CPU Ray Tracing 最终渲染结果，用于显示高质量光追图像。
+
+`Preview` 标签页不会启动 CPU 光线追踪，只负责快速交互预览。
+
+鼠标操作：
+
+- 鼠标左键拖动：围绕目标点旋转视角。
+- 鼠标右键拖动：平移视角。
+- 鼠标滚轮：放大或缩小。
+
+OpenGL 预览结果不要求与 CPU Ray Tracing 完全一致。最终高质量图像仍由 `Render` 按钮启动 CPU Ray Tracing 生成。
+
 ## 6. 渲染参数说明
 
 右侧 `Render Settings` 区域包含：

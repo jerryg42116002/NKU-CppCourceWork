@@ -1,132 +1,115 @@
 # VALIDATION_PLAN
 
-本轮是 Implementation Agent：只写代码，不运行命令。以下验证计划供 Validation Agent 在本地 Qt 6 + CMake 环境执行。
+本轮是 Implementation Agent：只写代码，不运行构建、测试或程序。以下内容供后续 Validation Agent 执行。
 
-## Task Summary
+## 本轮任务
 
-新增详细中文使用文档：
+在 `GLPreviewWidget` 中实现鼠标拖拽球体功能：
 
-- 新增 `USER_GUIDE.md`，覆盖环境配置、编译、启动、界面、渲染、场景编辑、预设、保存加载、图片导出和常见问题。
-- `README.md` 增加到 `USER_GUIDE.md` 的入口链接。
+- 左键按中球体后选中球体并进入拖拽状态。
+- 鼠标移动时，球体沿地面 XZ 平面移动，Y 坐标保持不变。
+- 拖动过程中 OpenGL Preview 实时刷新。
+- 右侧 Scene Panel 同步显示球体新坐标。
+- 点击 `Render` 时，CPU Ray Tracing 使用拖动后的最新 Scene snapshot。
 
-## Changed Files
+## 变更范围
 
+- `CMakeLists.txt`
+- `src/main.cpp`
+- `src/gui/GLPreviewWidget.h`
+- `src/gui/GLPreviewWidget.cpp`
+- `src/gui/MainWindow.h`
 - `src/gui/MainWindow.cpp`
-- `src/gui/RenderWidget.cpp`
+- `src/gui/ScenePanel.h`
+- `src/gui/ScenePanelSelection.cpp`
 - `VALIDATION_PLAN.md`
-- `README.md`
-- `USER_GUIDE.md`
 
-## Build Commands
+## 构建验证
 
 ```powershell
 cmake -S . -B build -DCMAKE_PREFIX_PATH="你的 Qt 6 Kit 路径"
 cmake --build build --config Release
 ```
 
-如果 Qt 6 已经加入环境变量，也可以执行：
+如果 Qt 6 已加入环境变量，也可以执行：
 
 ```powershell
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-## Expected Build Result
+期望结果：
 
 - CMake configure 成功。
 - Release 构建成功。
-- 无 C++ 编译错误。
-- 无 Qt MOC 错误。
-- 无链接错误。
+- 正确链接 `Qt6::Widgets`、`Qt6::OpenGL`、`Qt6::OpenGLWidgets`。
+- 不引入 CUDA、OptiX、Vulkan、DirectX、Qt WebEngine 或游戏引擎依赖。
 
-## Manual Runtime Validation
+## Self-Test 验证
 
-1. 打开 `README.md`，确认“使用方法”下方包含 `USER_GUIDE.md` 链接。
-2. 打开 `USER_GUIDE.md`，确认文档包含：
-   - 软件简介
-   - 运行前准备
-   - 编译项目
-   - Qt DLL 部署
-   - 主界面说明
-   - 渲染参数说明
-   - 预设场景说明
-   - Render / Stop / Save Image 使用说明
-   - Sphere / Plane / Point Light 编辑说明
-   - Save Scene / Load Scene 说明
-   - 菜单栏说明
-   - 推荐展示流程
-   - 常见问题
+构建成功后执行：
 
-## Scene Editing Validation
+```powershell
+.\build\Release\TinyRayStudio.exe --self-test
+```
 
-1. 在 Scene Panel 中确认当前对象列表显示 Sphere、Plane、Point Light。
-2. 点击 `Sphere` 添加球体。
-3. 点击 `Plane` 添加平面。
-4. 点击 `Light` 添加点光源。
-5. 选中新增 Sphere，修改：
-   - center x/y/z
-   - radius
-   - material type
-   - albedo color
-   - roughness
-   - refractive index
-6. 选中 Plane，修改：
-   - point
-   - normal
-   - material
-7. 选中 Point Light，修改：
-   - position
-   - color
-   - intensity
-8. 删除选中对象，确认列表刷新且程序不崩溃。
-9. 修改对象后点击 Render，确认最新场景参数参与渲染。
+期望结果：
 
-## Preset Validation
+- 进程返回码为 `0`。
+- `OrbitCamera` 默认状态、orbit、zoom、pan 后均合法且不产生 NaN。
+- 对象 id 为稳定的唯一正整数。
+- ray 命中 sphere 后，`HitRecord::hitObjectId` 返回正确对象 id。
+- ray 未命中时，不会错误返回选中对象。
+- ray-plane 求交结果正确。
+- sphere center 修改后，`Scene::intersect` 的命中结果发生对应变化。
+- Scene snapshot 不受后续 GUI Scene 修改影响。
 
-1. 在 Presets 下拉框依次选择：
-   - Reflection Demo
-   - Glass Demo
-   - Colored Lights Demo
-2. 每次选择后确认对象列表自动替换。
-3. 每个预设点击 Render，确认视觉效果明显不同。
-4. 默认启动时应加载 Colored Lights Demo。
+## 手工运行验证
 
-## Scene Save / Load Validation
+1. 启动 TinyRay Studio。
+2. 切换到 `Preview` 标签页。
+3. 左键单击球体：
+   - 球体被选中。
+   - OpenGL Preview 中选中球体高亮。
+   - 状态栏显示选中对象。
+   - Scene Panel 选中对应对象并显示其坐标。
+4. 左键按住球体并拖动：
+   - 球体沿 XZ 平面移动。
+   - Y 坐标保持不变。
+   - OpenGL Preview 实时刷新。
+   - Scene Panel 中 center x / z 实时更新。
+5. 左键按住空白区域并拖动：
+   - 相机 orbit 旋转仍然正常。
+   - 不移动任何球体。
+6. 右键拖动：
+   - 相机 pan 平移仍然正常。
+7. 鼠标滚轮：
+   - 相机 zoom 缩放仍然正常。
+8. 点击空白区域：
+   - 清除选中状态。
+9. 拖动球体后点击 `Render`：
+   - CPU Ray Tracing 使用球体的新位置渲染。
+   - 渲染线程不直接读取正在被 GUI 修改的 Scene。
+10. 渲染过程中尝试在 Preview 中拖动球体：
+    - 程序不崩溃。
+    - 当前 CPU 渲染继续使用启动时的 Scene snapshot。
 
-1. 修改当前场景中的至少一个对象和一个光源。
-2. 点击 `Save Scene`，保存为 JSON 文件。
-3. 点击 `Clear` 或切换预设。
-4. 点击 `Load Scene` 加载刚才保存的 JSON。
-5. 确认：
-   - 场景对象恢复；
-   - 材质类型恢复；
-   - 光源恢复；
-   - render settings 恢复；
-   - 加载失败时弹出 QMessageBox，不崩溃。
+## 回归验证
 
-## Render / Progressive / Stop Validation
+1. Scene Panel 手动修改球体坐标后，OpenGL Preview 自动刷新。
+2. 删除当前选中球体后，不应崩溃。
+3. Plane 和 Point Light 暂时不要求可拖拽，但仍应能正常显示。
+4. `Save Image` 仍然保存 CPU Ray Tracing 的 QImage，不保存 OpenGL Preview。
+5. `Save Scene` 保存拖动后的球体位置。
+6. `Load Scene` 后，OpenGL Preview 与 Scene Panel 显示加载后的场景。
 
-1. 使用默认设置：
-   - 800x450
-   - samples 16
-   - max depth 5
-2. 点击 Render，确认状态栏显示当前状态。
-3. 确认 progressive preview 会逐步更新。
-4. 渲染过程中点击 Stop，确认保留当前半成品图像。
-5. 渲染完成后确认状态栏显示 Done。
-6. 点击 Save Image，确认可以选择路径保存 PNG。
+## 记录到 VALIDATION_REPORT.md
 
-## Known Risks
+Validation Agent 完成后，请记录：
 
-- 右侧面板改为 `QScrollArea` 后，需要确认所有控件在小窗口下仍能正常点击。
-- 默认窗口变小后，需要确认菜单栏、状态栏和 RenderWidget 不会发生遮挡。
-- Dock 最小宽度降低后，需要确认 ScenePanel 内按钮文字不会严重挤压。
-
-## Logs For VALIDATION_REPORT.md
-
-Validation Agent 应复制：
-
-- CMake configure 完整输出
-- Build 完整输出
-- Runtime 手动验证结果摘要
-- 如果失败，复制首个关键错误和 suspected cause
+- CMake configure 结果。
+- Release build 结果。
+- `--self-test` 输出和返回码。
+- 球体拖拽的手工验证结果。
+- CPU 渲染 snapshot 行为验证结果。
+- 如有失败，记录第一个关键错误和 suspected cause。

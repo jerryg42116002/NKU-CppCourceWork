@@ -10,21 +10,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGL OpenGLWidgets)
+find_package(OpenGL REQUIRED)
 
 add_executable(TinyRayStudio WIN32
     src/main.cpp
     src/gui/MainWindow.h
     src/gui/MainWindow.cpp
+    src/gui/GLPreviewWidget.h
+    src/gui/GLPreviewWidget.cpp
     src/gui/RenderWidget.h
     src/gui/RenderWidget.cpp
     src/gui/ScenePanel.h
     src/gui/ScenePanel.cpp
+    src/gui/ScenePanelSelection.cpp
     src/core/Vec3.h
     src/core/MathUtils.h
     src/core/Random.h
     src/core/Ray.h
     src/core/Camera.h
+    src/core/OrbitCamera.h
+    src/core/OrbitCamera.cpp
     src/core/Material.h
     src/core/HitRecord.h
     src/core/Object.h
@@ -42,6 +48,8 @@ add_executable(TinyRayStudio WIN32
     src/core/RenderSettings.h
     src/core/Renderer.h
     src/core/Renderer.cpp
+    src/interaction/Picking.h
+    src/interaction/Picking.cpp
 )
 
 target_include_directories(TinyRayStudio
@@ -52,6 +60,9 @@ target_include_directories(TinyRayStudio
 target_link_libraries(TinyRayStudio
     PRIVATE
         Qt6::Widgets
+        Qt6::OpenGL
+        Qt6::OpenGLWidgets
+        OpenGL::GL
 )
 
 if(MSVC)

@@ -14,6 +14,7 @@ Scene& Scene::operator=(const Scene& other)
     }
 
     camera = other.camera;
+    selectedObjectId = other.selectedObjectId;
     lights = other.lights;
     objects.clear();
     objects.reserve(other.objects.size());
@@ -41,6 +42,47 @@ bool Scene::intersect(const Ray& ray, double tMin, double tMax, HitRecord& recor
     }
 
     return hitAnything;
+}
+
+bool Scene::containsObjectId(int objectId) const
+{
+    return objectById(objectId) != nullptr;
+}
+
+Object* Scene::objectById(int objectId)
+{
+    for (const auto& object : objects) {
+        if (object && object->id() == objectId) {
+            return object.get();
+        }
+    }
+    return nullptr;
+}
+
+const Object* Scene::objectById(int objectId) const
+{
+    for (const auto& object : objects) {
+        if (object && object->id() == objectId) {
+            return object.get();
+        }
+    }
+    return nullptr;
+}
+
+QString Scene::objectLabel(int objectId) const
+{
+    const Object* object = objectById(objectId);
+    if (!object) {
+        return QStringLiteral("None");
+    }
+
+    if (dynamic_cast<const Sphere*>(object)) {
+        return QStringLiteral("Sphere #%1").arg(objectId);
+    }
+    if (dynamic_cast<const Plane*>(object)) {
+        return QStringLiteral("Plane #%1").arg(objectId);
+    }
+    return QStringLiteral("Object #%1").arg(objectId);
 }
 
 Scene Scene::createDefaultScene()

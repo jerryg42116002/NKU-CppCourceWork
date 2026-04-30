@@ -212,3 +212,6 @@ GUI 应显示友好错误信息。
 - File / Render / Help 菜单栏
 - About 窗口
 - PNG 导出路径选择
+- OpenGL Preview tab
+- Render Result tab
+- OrbitCamera 实时视角旋转、缩放和平移

@@ -20,6 +20,7 @@ bool Plane::intersect(const Ray& ray, double tMin, double tMax, HitRecord& recor
     record.point = ray.at(record.t);
     record.setFaceNormal(ray, normal);
     record.material = &material;
+    record.hitObjectId = id();
 
     return true;
 }

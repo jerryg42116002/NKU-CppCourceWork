@@ -1,46 +1,160 @@
 # AGENTS.md
 
-TinyRay Studio 的每个 Agent 都必须先读本文件。本文件只保留硬规则；完整项目说明在 `PROJECT_SPEC.md`。
+## Project Name
 
-## 项目硬约束
+TinyRay Studio
 
-- 项目是 C++ 图形学桌面工具，不是游戏。
-- 技术栈固定为 C++17、Qt 6 Widgets、CMake、QImage、标准 C++ 线程工具。
-- 渲染器必须运行在 CPU 上。
-- 禁止使用 CUDA、Vulkan、DirectX、游戏引擎、Web 前端和重型外部依赖。
-- OpenGL 不是必需项，除非任务明确要求，否则不要引入。
+## Project Type
 
-## 代码硬规则
+C++ graphical desktop application.
 
-- 不要把所有逻辑写进 `main.cpp`。
-- GUI、渲染器、数学、场景、几何体、材质、相机模块必须保持分离。
-- 核心 ray tracing 代码尽量独立于 Qt；Qt 主要用于 GUI、事件、图像显示和文件对话框。
-- Worker thread 不得直接操作 QWidget；必须通过 Qt signal/slot 回到主线程更新 UI。
-- 渲染取消必须使用线程安全机制，例如 atomic cancellation flag。
-- 代码应保持可读、模块化、可扩展，避免全局可变状态。
+This is not a game. It is a computer graphics tool for interactive scene editing, real-time OpenGL preview, and CPU-based ray tracing final rendering.
 
-## Agent 分工硬规则
+---
 
-### Implementation Agent
+## Main Goal
 
-- 可读写源代码、CMake、README、文档和 `VALIDATION_PLAN.md`。
-- 每次实现任务结束必须更新 `VALIDATION_PLAN.md`。
-- 如果用户明确要求“只写代码，不运行命令”，不得运行 shell/build/test 命令。
-- 不得声称构建、测试或运行已通过，除非 `VALIDATION_REPORT.md` 中有对应证据。
+Build a C++17 / Qt 6 Widgets desktop application for visualizing and editing simple 3D scenes.
 
-### Validation Agent
+The program should support:
 
-- 只执行 `VALIDATION_PLAN.md` 中的验证命令。
-- 可创建或更新 `VALIDATION_REPORT.md`。
-- 不得修改源代码、CMake、GUI、头文件或项目架构。
-- 验证失败时只报告失败信息，不自行修复。
+1. Real-time OpenGL preview for interaction.
+2. CPU ray tracing for high-quality final rendering.
+3. Scene editing through GUI.
+4. Mouse-based camera control.
+5. Object selection and dragging.
+6. Image export.
 
-## 何时读取 PROJECT_SPEC.md
+The final application should feel like a small graphics tool, not a static demo.
 
-- 高推理写代码、架构设计、大功能开发、渲染算法修改、GUI 工作流修改时，先读取 `PROJECT_SPEC.md`。
-- 简单 git 操作、简单说明、少量文档调整、验证执行任务，不需要读取 `PROJECT_SPEC.md`。
+---
 
-## 验证文件
+## Rendering Architecture
 
-- `VALIDATION_PLAN.md`：验证命令和预期结果。
-- `VALIDATION_REPORT.md`：实际验证结果和错误摘要。
+This project uses a hybrid rendering architecture:
+
+### 1. OpenGL Real-Time Preview Renderer
+
+Used for:
+
+- Real-time scene preview
+- Mouse camera rotation
+- Mouse wheel zoom
+- View panning
+- Object selection
+- Object dragging
+- Quick material and lighting preview
+
+The OpenGL preview should be implemented with:
+
+- Qt 6 Widgets
+- QOpenGLWidget
+- QOpenGLFunctions
+- OpenGL
+- GLSL if needed
+
+### 2. CPU Ray Tracing Final Renderer
+
+Used for high-quality final rendering.
+
+The CPU ray tracer should implement core computer graphics algorithms:
+
+- Ray generation from camera
+- Ray-object intersection
+- Sphere intersection
+- Plane intersection
+- Point light illumination
+- Lambert diffuse shading
+- Shadow rays
+- Metal reflection
+- Glass refraction
+- Recursive ray tracing
+- Anti-aliasing
+- Gamma correction
+- Multi-threaded rendering
+- Progressive image update if feasible
+- Render cancellation
+- PNG image export
+
+---
+
+## Technology Constraints
+
+### Use
+
+- C++17 or newer
+- Qt 6 Widgets
+- QOpenGLWidget
+- OpenGL
+- CMake
+- QImage
+- Standard C++ threading tools
+- Qt signal / slot for GUI-thread communication
+
+### Avoid
+
+- CUDA
+- OptiX
+- Vulkan
+- DirectX
+- Game engines
+- Python
+- Web frontend
+- Qt WebEngine
+- Heavy external dependencies
+- Platform-specific hacks
+
+### Notes
+
+The project may use the GPU through OpenGL for real-time preview.
+
+The main ray tracing algorithm should still be implemented in C++ on the CPU.
+
+Do not replace the CPU ray tracer with CUDA, OptiX, Vulkan Ray Tracing, or DirectX Raytracing unless explicitly requested.
+
+---
+
+## Core Workflow Rule
+
+This repository uses a strict two-agent workflow:
+
+1. Implementation Agent
+2. Validation Agent
+
+The two roles must not be mixed.
+
+---
+
+# Implementation Agent Rules
+
+Use this role when implementing features, modifying code, refactoring, or fixing bugs.
+
+## Allowed
+
+- Read source files.
+- Modify source files.
+- Add new source files.
+- Modify CMake files.
+- Modify documentation.
+- Refactor code.
+- Add interfaces.
+- Add self-test logic.
+- Update `VALIDATION_PLAN.md`.
+
+## Forbidden
+
+- Do not run shell commands.
+- Do not run CMake.
+- Do not build the project.
+- Do not run tests.
+- Do not launch the application.
+- Do not claim the code has been compiled.
+- Do not claim tests passed.
+- Do not say the change is verified unless validation logs are provided.
+
+## Required After Every Implementation Task
+
+Create or update:
+
+```text
+VALIDATION_PLAN.md

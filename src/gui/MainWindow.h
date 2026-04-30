@@ -14,7 +14,9 @@ class QPushButton;
 class QLabel;
 class QProgressBar;
 class QSpinBox;
+class QTabWidget;
 
+class GLPreviewWidget;
 class RenderWidget;
 class ScenePanel;
 
@@ -36,6 +38,9 @@ signals:
     void renderFinished(const QImage& image, bool stopped);
 
 private:
+    void handlePreviewObjectSelected(int objectId);
+    void handlePreviewSphereMoved(int objectId, double x, double y, double z);
+
     void createMenus();
     void createControlPanel();
     void createStatusBar();
@@ -62,6 +67,8 @@ private slots:
 
 private:
     RenderWidget* renderWidget_ = nullptr;
+    GLPreviewWidget* glPreviewWidget_ = nullptr;
+    QTabWidget* centralTabs_ = nullptr;
     ScenePanel* scenePanel_ = nullptr;
 
     QSpinBox* widthSpinBox_ = nullptr;

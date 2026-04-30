@@ -4,6 +4,8 @@
 #include <utility>
 #include <vector>
 
+#include <QString>
+
 #include "core/Camera.h"
 #include "core/HitRecord.h"
 #include "core/Light.h"
@@ -29,6 +31,12 @@ public:
 
     void addObject(std::shared_ptr<Object> object)
     {
+        if (!object) {
+            return;
+        }
+        if (object->id() <= 0 || containsObjectId(object->id())) {
+            object->setId(Object::createId());
+        }
         objects.push_back(std::move(object));
     }
 
@@ -48,6 +56,10 @@ public:
     }
 
     bool intersect(const Ray& ray, double tMin, double tMax, HitRecord& record) const;
+    bool containsObjectId(int objectId) const;
+    Object* objectById(int objectId);
+    const Object* objectById(int objectId) const;
+    QString objectLabel(int objectId) const;
 
     static Scene createDefaultScene();
     static Scene createReflectionDemo();
@@ -55,6 +67,7 @@ public:
     static Scene createColoredLightsDemo();
 
     Camera camera;
+    int selectedObjectId = -1;
     std::vector<std::shared_ptr<Object>> objects;
     std::vector<Light> lights;
 };

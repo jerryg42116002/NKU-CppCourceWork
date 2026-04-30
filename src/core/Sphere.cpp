@@ -33,6 +33,7 @@ bool Sphere::intersect(const Ray& ray, double tMin, double tMax, HitRecord& reco
     const Vec3 outwardNormal = (record.point - center) / radius;
     record.setFaceNormal(ray, outwardNormal);
     record.material = &material;
+    record.hitObjectId = id();
 
     return true;
 }
