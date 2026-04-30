@@ -14,9 +14,11 @@ class Renderer
 {
 public:
     using ProgressCallback = std::function<void(int)>;
+    using PreviewCallback = std::function<void(const QImage&, int, int, int, double)>;
 
     QImage render(const Scene& scene, const RenderSettings& settings,
-                  const ProgressCallback& progressCallback = ProgressCallback());
+                  const ProgressCallback& progressCallback = ProgressCallback(),
+                  const PreviewCallback& previewCallback = PreviewCallback());
 
     void requestStop();
     void resetStopFlag();

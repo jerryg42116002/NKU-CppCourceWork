@@ -1,8 +1,10 @@
 #include "gui/MainWindow.h"
 
 #include <algorithm>
+#include <system_error>
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -31,6 +33,24 @@ MainWindow::MainWindow(QWidget* parent)
 
     createControlPanel();
     createStatusBar();
+
+    connect(this, &MainWindow::renderProgressChanged,
+            this, &MainWindow::updateRenderProgress,
+            Qt::QueuedConnection);
+    connect(this, &MainWindow::renderPreviewUpdated,
+            this, &MainWindow::updateRenderPreview,
+            Qt::QueuedConnection);
+    connect(this, &MainWindow::renderFinished,
+            this, &MainWindow::handleRenderFinished,
+            Qt::QueuedConnection);
+}
+
+MainWindow::~MainWindow()
+{
+    renderer_.requestStop();
+    if (renderThread_.joinable()) {
+        renderThread_.join();
+    }
 }
 
 void MainWindow::createControlPanel()
@@ -63,9 +83,13 @@ void MainWindow::createControlPanel()
     heightSpinBox_->setSuffix(QStringLiteral(" px"));
     heightSpinBox_->setValue(defaults.height);
 
-    samplesSpinBox_ = new QSpinBox(settingsGroup);
-    samplesSpinBox_->setRange(1, 1024);
-    samplesSpinBox_->setValue(defaults.samplesPerPixel);
+    samplesComboBox_ = new QComboBox(settingsGroup);
+    const int sampleOptions[] = {1, 4, 8, 16, 32, 64};
+    for (const int sampleCount : sampleOptions) {
+        samplesComboBox_->addItem(QString::number(sampleCount));
+    }
+    const int defaultSamplesIndex = samplesComboBox_->findText(QString::number(defaults.samplesPerPixel));
+    samplesComboBox_->setCurrentIndex(defaultSamplesIndex >= 0 ? defaultSamplesIndex : 3);
 
     maxDepthSpinBox_ = new QSpinBox(settingsGroup);
     maxDepthSpinBox_->setRange(1, 64);
@@ -77,7 +101,7 @@ void MainWindow::createControlPanel()
 
     settingsLayout->addRow(QStringLiteral("Width"), widthSpinBox_);
     settingsLayout->addRow(QStringLiteral("Height"), heightSpinBox_);
-    settingsLayout->addRow(QStringLiteral("Samples"), samplesSpinBox_);
+    settingsLayout->addRow(QStringLiteral("Samples"), samplesComboBox_);
     settingsLayout->addRow(QStringLiteral("Max Depth"), maxDepthSpinBox_);
     settingsLayout->addRow(QStringLiteral("Threads"), threadsSpinBox_);
 
@@ -107,6 +131,8 @@ void MainWindow::createControlPanel()
     connect(stopButton_, &QPushButton::clicked, this, &MainWindow::handleStop);
     connect(saveImageButton_, &QPushButton::clicked, this, &MainWindow::handleSaveImage);
     connect(clearButton_, &QPushButton::clicked, this, &MainWindow::handleClearImage);
+
+    setRenderControlsEnabled(true);
 }
 
 void MainWindow::createStatusBar()
@@ -127,8 +153,9 @@ void MainWindow::createStatusBar()
 void MainWindow::setRenderControlsEnabled(bool enabled)
 {
     renderButton_->setEnabled(enabled);
-    saveImageButton_->setEnabled(enabled);
+    saveImageButton_->setEnabled(true);
     clearButton_->setEnabled(enabled);
+    stopButton_->setEnabled(!enabled);
 }
 
 tinyray::RenderSettings MainWindow::currentRenderSettings() const
@@ -136,7 +163,7 @@ tinyray::RenderSettings MainWindow::currentRenderSettings() const
     tinyray::RenderSettings settings;
     settings.width = widthSpinBox_->value();
     settings.height = heightSpinBox_->value();
-    settings.samplesPerPixel = samplesSpinBox_->value();
+    settings.samplesPerPixel = samplesComboBox_->currentText().toInt();
     settings.maxDepth = maxDepthSpinBox_->value();
     settings.threadCount = threadsSpinBox_->value();
     return settings;
@@ -144,34 +171,51 @@ tinyray::RenderSettings MainWindow::currentRenderSettings() const
 
 void MainWindow::handleRender()
 {
+    if (renderThread_.joinable()) {
+        statusLabel_->setText(QStringLiteral("Render already running"));
+        return;
+    }
+
     const tinyray::RenderSettings settings = currentRenderSettings();
+    const tinyray::Scene scene = scene_;
 
     setRenderControlsEnabled(false);
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    statusLabel_->setText(QStringLiteral("Rendering %1 x %2").arg(settings.width).arg(settings.height));
+    statusLabel_->setText(QStringLiteral("Sample 0/%1 | 0% | 0.0s").arg(settings.samplesPerPixel));
     progressBar_->setValue(0);
 
     renderer_.resetStopFlag();
-    const QImage image = renderer_.render(scene_, settings, [this](int progress) {
-        progressBar_->setValue(progress);
-        qApp->processEvents();
-    });
+    try {
+        renderThread_ = std::thread([this, scene, settings]() {
+            const QImage image = renderer_.render(scene, settings, [this](int progress) {
+                emit renderProgressChanged(progress);
+            }, [this](const QImage& image,
+                      int currentSample,
+                      int totalSamples,
+                      int progress,
+                      double elapsedSeconds) {
+                emit renderPreviewUpdated(image, currentSample, totalSamples, progress, elapsedSeconds);
+            });
 
-    renderWidget_->setImage(image);
-
-    QApplication::restoreOverrideCursor();
-    setRenderControlsEnabled(true);
-
-    if (renderer_.stopRequested()) {
-        statusLabel_->setText(QStringLiteral("Render stopped"));
-    } else {
-        progressBar_->setValue(100);
-        statusLabel_->setText(QStringLiteral("Render complete"));
+            emit renderFinished(image, renderer_.stopRequested());
+        });
+    } catch (const std::system_error& error) {
+        QApplication::restoreOverrideCursor();
+        setRenderControlsEnabled(true);
+        statusLabel_->setText(QStringLiteral("Failed to start render thread"));
+        QMessageBox::warning(this,
+                             QStringLiteral("Render"),
+                             QStringLiteral("Failed to start render thread: %1").arg(error.what()));
     }
 }
 
 void MainWindow::handleStop()
 {
+    if (!renderThread_.joinable()) {
+        statusLabel_->setText(QStringLiteral("No active render"));
+        return;
+    }
+
     renderer_.requestStop();
     statusLabel_->setText(QStringLiteral("Stop requested"));
 }
@@ -212,4 +256,45 @@ void MainWindow::handleClearImage()
     renderWidget_->clearImage();
     progressBar_->setValue(0);
     statusLabel_->setText(QStringLiteral("Preview cleared"));
+}
+
+void MainWindow::updateRenderProgress(int progress)
+{
+    const int clampedProgress = std::clamp(progress, 0, 100);
+    progressBar_->setValue(clampedProgress);
+}
+
+void MainWindow::updateRenderPreview(const QImage& image,
+                                     int currentSample,
+                                     int totalSamples,
+                                     int progress,
+                                     double elapsedSeconds)
+{
+    renderWidget_->setImage(image);
+
+    const int clampedProgress = std::clamp(progress, 0, 100);
+    progressBar_->setValue(clampedProgress);
+    statusLabel_->setText(QStringLiteral("Sample %1/%2 | %3% | %4s")
+                              .arg(currentSample)
+                              .arg(totalSamples)
+                              .arg(clampedProgress)
+                              .arg(elapsedSeconds, 0, 'f', 1));
+}
+
+void MainWindow::handleRenderFinished(const QImage& image, bool stopped)
+{
+    if (renderThread_.joinable()) {
+        renderThread_.join();
+    }
+
+    renderWidget_->setImage(image);
+    QApplication::restoreOverrideCursor();
+    setRenderControlsEnabled(true);
+
+    if (stopped) {
+        statusLabel_->setText(QStringLiteral("Render stopped"));
+    } else {
+        progressBar_->setValue(100);
+        statusLabel_->setText(QStringLiteral("Done"));
+    }
 }
