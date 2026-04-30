@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
 #include <QLabel>
 #include <QMenu>
@@ -17,6 +18,7 @@
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QVBoxLayout>
@@ -30,7 +32,8 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     setWindowTitle(QStringLiteral("TinyRay Studio"));
-    resize(1280, 720);
+    resize(1024, 640);
+    setMinimumSize(860, 520);
     scene_ = tinyray::Scene::createDefaultScene();
 
     renderWidget_ = new RenderWidget(this);
@@ -92,10 +95,14 @@ void MainWindow::createControlPanel()
     dock->setAllowedAreas(Qt::RightDockWidgetArea);
     dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
 
-    auto* panel = new QWidget(dock);
+    auto* scrollArea = new QScrollArea(dock);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+
+    auto* panel = new QWidget(scrollArea);
     auto* panelLayout = new QVBoxLayout(panel);
-    panelLayout->setContentsMargins(12, 12, 12, 12);
-    panelLayout->setSpacing(12);
+    panelLayout->setContentsMargins(8, 8, 8, 8);
+    panelLayout->setSpacing(8);
 
     auto* settingsGroup = new QGroupBox(QStringLiteral("Render Settings"), panel);
     auto* settingsLayout = new QFormLayout(settingsGroup);
@@ -163,8 +170,10 @@ void MainWindow::createControlPanel()
     panelLayout->addWidget(scenePanel_, 1);
     panelLayout->addWidget(outputGroup);
 
-    dock->setWidget(panel);
-    dock->setMinimumWidth(280);
+    scrollArea->setWidget(panel);
+    dock->setWidget(scrollArea);
+    dock->setMinimumWidth(240);
+    dock->resize(300, height());
     addDockWidget(Qt::RightDockWidgetArea, dock);
 
     connect(renderButton_, &QPushButton::clicked, this, &MainWindow::handleRender);

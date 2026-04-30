@@ -77,6 +77,8 @@ src/
 
 ## 使用方法
 
+更完整的操作说明见 [USER_GUIDE.md](USER_GUIDE.md)。
+
 1. 启动程序。
 2. 在右侧面板设置分辨率、samples per pixel、max depth 和线程数。
 3. 在 Presets 中选择内置预设，或在 Scene 面板中添加、删除和编辑 Sphere、Plane、Point Light。

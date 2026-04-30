@@ -4,34 +4,18 @@
 
 ## Task Summary
 
-实现最终可展示版本功能：
+新增详细中文使用文档：
 
-- 基础 Scene Panel 场景编辑 GUI
-- Sphere / Plane / Point Light 添加、删除、属性编辑
-- 内置预设场景
-- JSON 场景保存和加载
-- 菜单栏 File / Render / Help
-- About 窗口
-- README 展示性说明更新
+- 新增 `USER_GUIDE.md`，覆盖环境配置、编译、启动、界面、渲染、场景编辑、预设、保存加载、图片导出和常见问题。
+- `README.md` 增加到 `USER_GUIDE.md` 的入口链接。
 
 ## Changed Files
 
-- `CMakeLists.txt`
-- `README.md`
-- `PROJECT_SPEC.md`
-- `src/core/Object.h`
-- `src/core/Sphere.h`
-- `src/core/Sphere.cpp`
-- `src/core/Plane.h`
-- `src/core/Plane.cpp`
-- `src/core/Scene.h`
-- `src/core/Scene.cpp`
-- `src/core/SceneIO.h`
-- `src/core/SceneIO.cpp`
-- `src/gui/MainWindow.h`
 - `src/gui/MainWindow.cpp`
-- `src/gui/ScenePanel.h`
-- `src/gui/ScenePanel.cpp`
+- `src/gui/RenderWidget.cpp`
+- `VALIDATION_PLAN.md`
+- `README.md`
+- `USER_GUIDE.md`
 
 ## Build Commands
 
@@ -57,22 +41,21 @@ cmake --build build --config Release
 
 ## Manual Runtime Validation
 
-1. 启动 TinyRay Studio。
-2. 确认默认窗口大小约为 `1280x720`。
-3. 确认菜单栏包含：
-   - File / Load Scene / Save Scene / Save Image / Exit
-   - Render / Start Render / Stop Render / Clear Image
-   - Help / About
-4. 点击 Help / About，确认说明包含：
-   - TinyRay Studio
-   - C++17 + Qt Widgets + CPU Ray Tracing
-   - 阴影、反射、折射、抗锯齿、多线程等能力
-5. 确认右侧面板包含：
-   - Render Settings
-   - Presets
-   - Scene 对象列表
-   - Inspector 属性编辑区
-   - Render / Stop / Save Image / Save Scene / Load Scene / Clear
+1. 打开 `README.md`，确认“使用方法”下方包含 `USER_GUIDE.md` 链接。
+2. 打开 `USER_GUIDE.md`，确认文档包含：
+   - 软件简介
+   - 运行前准备
+   - 编译项目
+   - Qt DLL 部署
+   - 主界面说明
+   - 渲染参数说明
+   - 预设场景说明
+   - Render / Stop / Save Image 使用说明
+   - Sphere / Plane / Point Light 编辑说明
+   - Save Scene / Load Scene 说明
+   - 菜单栏说明
+   - 推荐展示流程
+   - 常见问题
 
 ## Scene Editing Validation
 
@@ -135,9 +118,9 @@ cmake --build build --config Release
 
 ## Known Risks
 
-- 本轮新增了大量 Qt Widgets UI 和 JSON 代码，需要重点检查 MOC、信号槽、头文件包含和链接。
-- `ScenePanel` 通过场景副本编辑并向 `MainWindow` 发出 `sceneChanged`，需要确认选中项刷新后不会丢失编辑状态。
-- JSON 文件格式是当前硬编码 v1，后续如果结构变化需要兼容处理。
+- 右侧面板改为 `QScrollArea` 后，需要确认所有控件在小窗口下仍能正常点击。
+- 默认窗口变小后，需要确认菜单栏、状态栏和 RenderWidget 不会发生遮挡。
+- Dock 最小宽度降低后，需要确认 ScenePanel 内按钮文字不会严重挤压。
 
 ## Logs For VALIDATION_REPORT.md
 

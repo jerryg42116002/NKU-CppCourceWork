@@ -9,7 +9,7 @@
 RenderWidget::RenderWidget(QWidget* parent)
     : QWidget(parent)
 {
-    setMinimumSize(640, 360);
+    setMinimumSize(420, 240);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setAutoFillBackground(false);
 }
@@ -33,7 +33,7 @@ const QImage& RenderWidget::image() const
 
 QSize RenderWidget::sizeHint() const
 {
-    return QSize(900, 540);
+    return QSize(680, 420);
 }
 
 void RenderWidget::paintEvent(QPaintEvent* event)
