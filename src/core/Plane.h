@@ -18,6 +18,7 @@ public:
     }
 
     bool intersect(const Ray& ray, double tMin, double tMax, HitRecord& record) const override;
+    std::shared_ptr<Object> clone() const override;
 
     Vec3 point = Vec3(0.0, 0.0, 0.0);
     Vec3 normal = Vec3(0.0, 1.0, 0.0);

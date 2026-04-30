@@ -18,6 +18,8 @@ add_executable(TinyRayStudio WIN32
     src/gui/MainWindow.cpp
     src/gui/RenderWidget.h
     src/gui/RenderWidget.cpp
+    src/gui/ScenePanel.h
+    src/gui/ScenePanel.cpp
     src/core/Vec3.h
     src/core/MathUtils.h
     src/core/Random.h
@@ -33,6 +35,8 @@ add_executable(TinyRayStudio WIN32
     src/core/Light.h
     src/core/Scene.h
     src/core/Scene.cpp
+    src/core/SceneIO.h
+    src/core/SceneIO.cpp
     src/core/RayTracer.h
     src/core/RayTracer.cpp
     src/core/RenderSettings.h

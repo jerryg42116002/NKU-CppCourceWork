@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <system_error>
 
+#include <QAction>
 #include <QApplication>
 #include <QComboBox>
 #include <QDockWidget>
@@ -11,6 +12,8 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
@@ -19,18 +22,21 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "core/SceneIO.h"
 #include "gui/RenderWidget.h"
+#include "gui/ScenePanel.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     setWindowTitle(QStringLiteral("TinyRay Studio"));
-    resize(1180, 720);
+    resize(1280, 720);
     scene_ = tinyray::Scene::createDefaultScene();
 
     renderWidget_ = new RenderWidget(this);
     setCentralWidget(renderWidget_);
 
+    createMenus();
     createControlPanel();
     createStatusBar();
 
@@ -51,6 +57,33 @@ MainWindow::~MainWindow()
     if (renderThread_.joinable()) {
         renderThread_.join();
     }
+}
+
+void MainWindow::createMenus()
+{
+    auto* fileMenu = menuBar()->addMenu(QStringLiteral("File"));
+    QAction* loadSceneAction = fileMenu->addAction(QStringLiteral("Load Scene"));
+    QAction* saveSceneAction = fileMenu->addAction(QStringLiteral("Save Scene"));
+    QAction* saveImageAction = fileMenu->addAction(QStringLiteral("Save Image"));
+    fileMenu->addSeparator();
+    QAction* exitAction = fileMenu->addAction(QStringLiteral("Exit"));
+
+    auto* renderMenu = menuBar()->addMenu(QStringLiteral("Render"));
+    QAction* startRenderAction = renderMenu->addAction(QStringLiteral("Start Render"));
+    QAction* stopRenderAction = renderMenu->addAction(QStringLiteral("Stop Render"));
+    QAction* clearImageAction = renderMenu->addAction(QStringLiteral("Clear Image"));
+
+    auto* helpMenu = menuBar()->addMenu(QStringLiteral("Help"));
+    QAction* aboutAction = helpMenu->addAction(QStringLiteral("About"));
+
+    connect(loadSceneAction, &QAction::triggered, this, &MainWindow::handleLoadScene);
+    connect(saveSceneAction, &QAction::triggered, this, &MainWindow::handleSaveScene);
+    connect(saveImageAction, &QAction::triggered, this, &MainWindow::handleSaveImage);
+    connect(exitAction, &QAction::triggered, this, &QWidget::close);
+    connect(startRenderAction, &QAction::triggered, this, &MainWindow::handleRender);
+    connect(stopRenderAction, &QAction::triggered, this, &MainWindow::handleStop);
+    connect(clearImageAction, &QAction::triggered, this, &MainWindow::handleClearImage);
+    connect(aboutAction, &QAction::triggered, this, &MainWindow::handleAbout);
 }
 
 void MainWindow::createControlPanel()
@@ -105,6 +138,9 @@ void MainWindow::createControlPanel()
     settingsLayout->addRow(QStringLiteral("Max Depth"), maxDepthSpinBox_);
     settingsLayout->addRow(QStringLiteral("Threads"), threadsSpinBox_);
 
+    scenePanel_ = new ScenePanel(panel);
+    scenePanel_->setScene(scene_);
+
     auto* outputGroup = new QGroupBox(QStringLiteral("Output"), panel);
     auto* outputLayout = new QVBoxLayout(outputGroup);
     outputLayout->setSpacing(8);
@@ -112,16 +148,20 @@ void MainWindow::createControlPanel()
     renderButton_ = new QPushButton(QStringLiteral("Render"), outputGroup);
     stopButton_ = new QPushButton(QStringLiteral("Stop"), outputGroup);
     saveImageButton_ = new QPushButton(QStringLiteral("Save Image"), outputGroup);
+    saveSceneButton_ = new QPushButton(QStringLiteral("Save Scene"), outputGroup);
+    loadSceneButton_ = new QPushButton(QStringLiteral("Load Scene"), outputGroup);
     clearButton_ = new QPushButton(QStringLiteral("Clear"), outputGroup);
 
     outputLayout->addWidget(renderButton_);
     outputLayout->addWidget(stopButton_);
     outputLayout->addWidget(saveImageButton_);
+    outputLayout->addWidget(saveSceneButton_);
+    outputLayout->addWidget(loadSceneButton_);
     outputLayout->addWidget(clearButton_);
 
     panelLayout->addWidget(settingsGroup);
+    panelLayout->addWidget(scenePanel_, 1);
     panelLayout->addWidget(outputGroup);
-    panelLayout->addStretch(1);
 
     dock->setWidget(panel);
     dock->setMinimumWidth(280);
@@ -130,7 +170,10 @@ void MainWindow::createControlPanel()
     connect(renderButton_, &QPushButton::clicked, this, &MainWindow::handleRender);
     connect(stopButton_, &QPushButton::clicked, this, &MainWindow::handleStop);
     connect(saveImageButton_, &QPushButton::clicked, this, &MainWindow::handleSaveImage);
+    connect(saveSceneButton_, &QPushButton::clicked, this, &MainWindow::handleSaveScene);
+    connect(loadSceneButton_, &QPushButton::clicked, this, &MainWindow::handleLoadScene);
     connect(clearButton_, &QPushButton::clicked, this, &MainWindow::handleClearImage);
+    connect(scenePanel_, &ScenePanel::sceneChanged, this, &MainWindow::handleSceneChanged);
 
     setRenderControlsEnabled(true);
 }
@@ -154,8 +197,22 @@ void MainWindow::setRenderControlsEnabled(bool enabled)
 {
     renderButton_->setEnabled(enabled);
     saveImageButton_->setEnabled(true);
+    saveSceneButton_->setEnabled(enabled);
+    loadSceneButton_->setEnabled(enabled);
     clearButton_->setEnabled(enabled);
     stopButton_->setEnabled(!enabled);
+}
+
+void MainWindow::applyRenderSettings(const tinyray::RenderSettings& settings)
+{
+    widthSpinBox_->setValue(std::clamp(settings.width, widthSpinBox_->minimum(), widthSpinBox_->maximum()));
+    heightSpinBox_->setValue(std::clamp(settings.height, heightSpinBox_->minimum(), heightSpinBox_->maximum()));
+
+    const int sampleIndex = samplesComboBox_->findText(QString::number(settings.samplesPerPixel));
+    samplesComboBox_->setCurrentIndex(sampleIndex >= 0 ? sampleIndex : samplesComboBox_->findText(QStringLiteral("16")));
+
+    maxDepthSpinBox_->setValue(std::clamp(settings.maxDepth, maxDepthSpinBox_->minimum(), maxDepthSpinBox_->maximum()));
+    threadsSpinBox_->setValue(std::clamp(settings.threadCount, threadsSpinBox_->minimum(), threadsSpinBox_->maximum()));
 }
 
 tinyray::RenderSettings MainWindow::currentRenderSettings() const
@@ -256,6 +313,80 @@ void MainWindow::handleClearImage()
     renderWidget_->clearImage();
     progressBar_->setValue(0);
     statusLabel_->setText(QStringLiteral("Preview cleared"));
+}
+
+void MainWindow::handleSaveScene()
+{
+    const QString fileName = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Save Scene"),
+        QStringLiteral("tinyray_scene.json"),
+        QStringLiteral("TinyRay Scene (*.json)"));
+
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    QString errorMessage;
+    if (!tinyray::SceneIO::saveToFile(scene_, currentRenderSettings(), fileName, &errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("Save Scene"), errorMessage);
+        return;
+    }
+
+    statusLabel_->setText(QStringLiteral("Scene saved"));
+}
+
+void MainWindow::handleLoadScene()
+{
+    if (renderThread_.joinable()) {
+        QMessageBox::information(this,
+                                 QStringLiteral("Load Scene"),
+                                 QStringLiteral("Stop the current render before loading a scene."));
+        return;
+    }
+
+    const QString fileName = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("Load Scene"),
+        QString(),
+        QStringLiteral("TinyRay Scene (*.json)"));
+
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    tinyray::Scene loadedScene;
+    tinyray::RenderSettings loadedSettings = currentRenderSettings();
+    QString errorMessage;
+    if (!tinyray::SceneIO::loadFromFile(fileName, loadedScene, loadedSettings, &errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("Load Scene"), errorMessage);
+        return;
+    }
+
+    scene_ = loadedScene;
+    scenePanel_->setScene(scene_);
+    applyRenderSettings(loadedSettings);
+    renderWidget_->clearImage();
+    progressBar_->setValue(0);
+    statusLabel_->setText(QStringLiteral("Scene loaded"));
+}
+
+void MainWindow::handleAbout()
+{
+    QMessageBox::about(
+        this,
+        QStringLiteral("About TinyRay Studio"),
+        QStringLiteral("TinyRay Studio\n\n"
+                       "C++17 + Qt Widgets + CPU Ray Tracing\n\n"
+                       "Supports shadows, diffuse shading, metal reflection, glass refraction, "
+                       "anti-aliasing, gamma correction, multi-threaded rendering, progressive preview, "
+                       "scene editing, and PNG export."));
+}
+
+void MainWindow::handleSceneChanged(const tinyray::Scene& scene)
+{
+    scene_ = scene;
+    statusLabel_->setText(QStringLiteral("Scene updated"));
 }
 
 void MainWindow::updateRenderProgress(int progress)

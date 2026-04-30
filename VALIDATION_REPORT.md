@@ -9,11 +9,11 @@
 - Working directory: `D:\NKUcpp大作业`
 - Shell: PowerShell
 - CMake: not found in current PATH
-- Qt 6: not verified because CMake configuration could not start
+- Qt 6: not verified because CMake could not start
 
 ## Commands Executed
 
-### 1. CMake Configure
+### 1. CMake Configure With Explicit Qt Prefix
 
 ```powershell
 cmake -S . -B build -DCMAKE_PREFIX_PATH="你的 Qt 6 Kit 路径"
@@ -28,10 +28,40 @@ cmake : The term 'cmake' is not recognized as the name of a cmdlet, function, sc
 FullyQualifiedErrorId : CommandNotFoundException
 ```
 
-### 2. CMake Build
+### 2. Release Build
 
 ```powershell
-cmake --build build
+cmake --build build --config Release
+```
+
+Result: FAIL
+
+Important output:
+
+```text
+cmake : The term 'cmake' is not recognized as the name of a cmdlet, function, script file, or operable program.
+FullyQualifiedErrorId : CommandNotFoundException
+```
+
+### 3. CMake Configure With Environment Qt
+
+```powershell
+cmake -S . -B build
+```
+
+Result: FAIL
+
+Important output:
+
+```text
+cmake : The term 'cmake' is not recognized as the name of a cmdlet, function, script file, or operable program.
+FullyQualifiedErrorId : CommandNotFoundException
+```
+
+### 4. Release Build Retry
+
+```powershell
+cmake --build build --config Release
 ```
 
 Result: FAIL
@@ -45,30 +75,36 @@ FullyQualifiedErrorId : CommandNotFoundException
 
 ## Validation Results
 
-- Document structure validation: NOT RUN by command
 - Build status: FAIL
 - Test status: NOT RUN
 - Runtime status: NOT RUN
-- Progressive rendering validation: NOT RUN
-- Stop behavior validation: NOT RUN
-- Save Image validation: NOT RUN
-- Multi-thread/thread-safety runtime validation: NOT RUN
-- Regression validation: NOT RUN
+- Manual GUI validation: NOT RUN
+- Scene editing validation: NOT RUN
+- Preset validation: NOT RUN
+- Scene save/load validation: NOT RUN
+- Render/progressive/stop validation: NOT RUN
+
+## Important Error Messages
+
+All planned build commands failed before CMake configuration could begin:
+
+```text
+cmake : The term 'cmake' is not recognized as the name of a cmdlet, function, script file, or operable program.
+```
 
 ## Suspected Cause
 
-The validation environment does not have `cmake` available in `PATH`, so neither the configure step nor the build step can run.
+`cmake` is not installed or is not available in the current `PATH`.
 
-The configure command also contains the placeholder `你的 Qt 6 Kit 路径`; after CMake is installed, this should be replaced by the actual Qt 6 Kit path before a meaningful Qt configuration can be validated.
+Qt 6 could not be validated because CMake is unavailable. The first configure command also contains the placeholder `你的 Qt 6 Kit 路径`, which must be replaced with the real Qt 6 Kit path once CMake is available.
 
-## Recommended Next Action
+## Recommended Next Action For Implementation Agent
 
-1. Install CMake or add the existing CMake installation directory to `PATH`.
-2. Install Qt 6 or locate the installed Qt 6 Kit path.
-3. Update the validation command with the real Qt 6 Kit path, for example:
+No source-code fix can be inferred from this validation run because the build did not start.
 
-```powershell
-cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.6.0/msvc2019_64"
-```
+Recommended environment action:
 
-4. Re-run the commands in `VALIDATION_PLAN.md`.
+1. Install CMake or add CMake to `PATH`.
+2. Install Qt 6 or locate the existing Qt 6 Kit path.
+3. Replace `你的 Qt 6 Kit 路径` with the actual Qt 6 path.
+4. Re-run `VALIDATION_PLAN.md`.

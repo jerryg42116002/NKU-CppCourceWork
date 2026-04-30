@@ -205,3 +205,10 @@ GUI 应显示友好错误信息。
 - Gamma 2.2 correction
 - 多线程行渲染
 - Progressive preview
+- Scene Panel 对象列表和属性编辑
+- Sphere / Plane / Point Light 添加与删除
+- Reflection / Glass / Colored Lights 内置预设
+- JSON scene save/load
+- File / Render / Help 菜单栏
+- About 窗口
+- PNG 导出路径选择

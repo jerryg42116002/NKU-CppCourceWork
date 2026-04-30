@@ -16,6 +16,7 @@ class QProgressBar;
 class QSpinBox;
 
 class RenderWidget;
+class ScenePanel;
 
 class MainWindow : public QMainWindow
 {
@@ -35,9 +36,11 @@ signals:
     void renderFinished(const QImage& image, bool stopped);
 
 private:
+    void createMenus();
     void createControlPanel();
     void createStatusBar();
     void setRenderControlsEnabled(bool enabled);
+    void applyRenderSettings(const tinyray::RenderSettings& settings);
     tinyray::RenderSettings currentRenderSettings() const;
 
 private slots:
@@ -45,6 +48,10 @@ private slots:
     void handleStop();
     void handleSaveImage();
     void handleClearImage();
+    void handleSaveScene();
+    void handleLoadScene();
+    void handleAbout();
+    void handleSceneChanged(const tinyray::Scene& scene);
     void updateRenderProgress(int progress);
     void updateRenderPreview(const QImage& image,
                              int currentSample,
@@ -55,6 +62,7 @@ private slots:
 
 private:
     RenderWidget* renderWidget_ = nullptr;
+    ScenePanel* scenePanel_ = nullptr;
 
     QSpinBox* widthSpinBox_ = nullptr;
     QSpinBox* heightSpinBox_ = nullptr;
@@ -65,6 +73,8 @@ private:
     QPushButton* renderButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
     QPushButton* saveImageButton_ = nullptr;
+    QPushButton* saveSceneButton_ = nullptr;
+    QPushButton* loadSceneButton_ = nullptr;
     QPushButton* clearButton_ = nullptr;
 
     QLabel* statusLabel_ = nullptr;

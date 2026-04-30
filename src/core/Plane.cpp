@@ -24,4 +24,9 @@ bool Plane::intersect(const Ray& ray, double tMin, double tMax, HitRecord& recor
     return true;
 }
 
+std::shared_ptr<Object> Plane::clone() const
+{
+    return std::make_shared<Plane>(*this);
+}
+
 } // namespace tinyray

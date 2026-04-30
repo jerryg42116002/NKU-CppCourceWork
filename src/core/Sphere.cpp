@@ -37,4 +37,9 @@ bool Sphere::intersect(const Ray& ray, double tMin, double tMax, HitRecord& reco
     return true;
 }
 
+std::shared_ptr<Object> Sphere::clone() const
+{
+    return std::make_shared<Sphere>(*this);
+}
+
 } // namespace tinyray

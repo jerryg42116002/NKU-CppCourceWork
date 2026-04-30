@@ -17,6 +17,10 @@ namespace tinyray {
 class Scene
 {
 public:
+    Scene() = default;
+    Scene(const Scene& other);
+    Scene& operator=(const Scene& other);
+
     void clear()
     {
         objects.clear();
@@ -46,6 +50,9 @@ public:
     bool intersect(const Ray& ray, double tMin, double tMax, HitRecord& record) const;
 
     static Scene createDefaultScene();
+    static Scene createReflectionDemo();
+    static Scene createGlassDemo();
+    static Scene createColoredLightsDemo();
 
     Camera camera;
     std::vector<std::shared_ptr<Object>> objects;
