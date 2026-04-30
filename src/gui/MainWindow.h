@@ -8,16 +8,15 @@
 #include "core/Renderer.h"
 #include "core/RenderSettings.h"
 #include "core/Scene.h"
+#include "interaction/DragMode.h"
 
 class QComboBox;
 class QPushButton;
 class QLabel;
 class QProgressBar;
 class QSpinBox;
-class QTabWidget;
 
-class GLPreviewWidget;
-class RenderWidget;
+class RealTimeRenderWidget;
 class ScenePanel;
 
 class MainWindow : public QMainWindow
@@ -38,8 +37,8 @@ signals:
     void renderFinished(const QImage& image, bool stopped);
 
 private:
-    void handlePreviewObjectSelected(int objectId);
-    void handlePreviewSphereMoved(int objectId, double x, double y, double z);
+    void handleRealTimeObjectSelected(int objectId);
+    void handleRealTimeObjectMoved(int objectId, double x, double y, double z);
 
     void createMenus();
     void createControlPanel();
@@ -66,9 +65,7 @@ private slots:
     void handleRenderFinished(const QImage& image, bool stopped);
 
 private:
-    RenderWidget* renderWidget_ = nullptr;
-    GLPreviewWidget* glPreviewWidget_ = nullptr;
-    QTabWidget* centralTabs_ = nullptr;
+    RealTimeRenderWidget* realTimeRenderWidget_ = nullptr;
     ScenePanel* scenePanel_ = nullptr;
 
     QSpinBox* widthSpinBox_ = nullptr;
@@ -76,6 +73,7 @@ private:
     QComboBox* samplesComboBox_ = nullptr;
     QSpinBox* maxDepthSpinBox_ = nullptr;
     QSpinBox* threadsSpinBox_ = nullptr;
+    QComboBox* dragModeComboBox_ = nullptr;
 
     QPushButton* renderButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
@@ -89,5 +87,6 @@ private:
 
     tinyray::Scene scene_;
     tinyray::Renderer renderer_;
+    QImage highQualityImage_;
     std::thread renderThread_;
 };

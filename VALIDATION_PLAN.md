@@ -1,27 +1,37 @@
 # VALIDATION_PLAN
 
-本轮是 Implementation Agent：只写代码，不运行构建、测试或程序。以下内容供后续 Validation Agent 执行。
+本轮是 Implementation Agent：代码已更新，未运行构建、测试或程序。以下内容供后续 Validation Agent 执行。
 
 ## 本轮任务
 
-在 `GLPreviewWidget` 中实现鼠标拖拽球体功能：
+新增物体拖拽坐标轴 / 平面切换功能。
 
-- 左键按中球体后选中球体并进入拖拽状态。
-- 鼠标移动时，球体沿地面 XZ 平面移动，Y 坐标保持不变。
-- 拖动过程中 OpenGL Preview 实时刷新。
-- 右侧 Scene Panel 同步显示球体新坐标。
-- 点击 `Render` 时，CPU Ray Tracing 使用拖动后的最新 Scene snapshot。
+## 新增功能
+
+右侧 Render Settings 面板新增 `Drag Mode` 下拉框：
+
+- `Move XZ Plane`
+- `Move XY Plane`
+- `Move YZ Plane`
+- `Move X Axis`
+- `Move Y Axis`
+- `Move Z Axis`
+
+拖拽对象支持：
+
+- Sphere
+- Box
+- Cylinder
+- Metal / Glass 版本的 Box 和 Cylinder
 
 ## 变更范围
 
 - `CMakeLists.txt`
-- `src/main.cpp`
+- `src/interaction/DragMode.h`
 - `src/gui/GLPreviewWidget.h`
 - `src/gui/GLPreviewWidget.cpp`
 - `src/gui/MainWindow.h`
 - `src/gui/MainWindow.cpp`
-- `src/gui/ScenePanel.h`
-- `src/gui/ScenePanelSelection.cpp`
 - `VALIDATION_PLAN.md`
 
 ## 构建验证
@@ -31,7 +41,7 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH="你的 Qt 6 Kit 路径"
 cmake --build build --config Release
 ```
 
-如果 Qt 6 已加入环境变量，也可以执行：
+如果 Qt 6 和 CMake 已加入环境变量，也可以执行：
 
 ```powershell
 cmake -S . -B build
@@ -42,7 +52,6 @@ cmake --build build --config Release
 
 - CMake configure 成功。
 - Release 构建成功。
-- 正确链接 `Qt6::Widgets`、`Qt6::OpenGL`、`Qt6::OpenGLWidgets`。
 - 不引入 CUDA、OptiX、Vulkan、DirectX、Qt WebEngine 或游戏引擎依赖。
 
 ## Self-Test 验证
@@ -56,52 +65,35 @@ cmake --build build --config Release
 期望结果：
 
 - 进程返回码为 `0`。
-- `OrbitCamera` 默认状态、orbit、zoom、pan 后均合法且不产生 NaN。
-- 对象 id 为稳定的唯一正整数。
-- ray 命中 sphere 后，`HitRecord::hitObjectId` 返回正确对象 id。
-- ray 未命中时，不会错误返回选中对象。
-- ray-plane 求交结果正确。
-- sphere center 修改后，`Scene::intersect` 的命中结果发生对应变化。
-- Scene snapshot 不受后续 GUI Scene 修改影响。
+- 现有非 GUI 逻辑测试全部通过。
 
 ## 手工运行验证
 
 1. 启动 TinyRay Studio。
-2. 切换到 `Preview` 标签页。
-3. 左键单击球体：
-   - 球体被选中。
-   - OpenGL Preview 中选中球体高亮。
-   - 状态栏显示选中对象。
-   - Scene Panel 选中对应对象并显示其坐标。
-4. 左键按住球体并拖动：
-   - 球体沿 XZ 平面移动。
-   - Y 坐标保持不变。
-   - OpenGL Preview 实时刷新。
-   - Scene Panel 中 center x / z 实时更新。
-5. 左键按住空白区域并拖动：
-   - 相机 orbit 旋转仍然正常。
-   - 不移动任何球体。
-6. 右键拖动：
-   - 相机 pan 平移仍然正常。
-7. 鼠标滚轮：
-   - 相机 zoom 缩放仍然正常。
-8. 点击空白区域：
-   - 清除选中状态。
-9. 拖动球体后点击 `Render`：
-   - CPU Ray Tracing 使用球体的新位置渲染。
-   - 渲染线程不直接读取正在被 GUI 修改的 Scene。
-10. 渲染过程中尝试在 Preview 中拖动球体：
-    - 程序不崩溃。
-    - 当前 CPU 渲染继续使用启动时的 Scene snapshot。
+2. 确认右侧 Render Settings 中出现 `Drag Mode` 下拉框。
+3. 选择 `Move XZ Plane`：
+   - 拖动物体时只改变 X / Z，Y 基本保持不变。
+4. 选择 `Move XY Plane`：
+   - 拖动物体时只改变 X / Y，Z 基本保持不变。
+5. 选择 `Move YZ Plane`：
+   - 拖动物体时只改变 Y / Z，X 基本保持不变。
+6. 选择 `Move X Axis`：
+   - 拖动物体时主要沿 X 轴移动。
+7. 选择 `Move Y Axis`：
+   - 拖动物体时主要沿 Y 轴移动。
+8. 选择 `Move Z Axis`：
+   - 拖动物体时主要沿 Z 轴移动。
+9. 对 Sphere / Box / Cylinder 分别重复上述至少一种拖拽模式。
+10. 拖动后点击 `High Quality Render`：
+    - CPU Ray Tracing 使用拖动后的最新位置。
+11. 拖动后点击 `Save Scene`，再 `Load Scene`：
+    - 对象新位置被保存并恢复。
 
-## 回归验证
+## 已知限制
 
-1. Scene Panel 手动修改球体坐标后，OpenGL Preview 自动刷新。
-2. 删除当前选中球体后，不应崩溃。
-3. Plane 和 Point Light 暂时不要求可拖拽，但仍应能正常显示。
-4. `Save Image` 仍然保存 CPU Ray Tracing 的 QImage，不保存 OpenGL Preview。
-5. `Save Scene` 保存拖动后的球体位置。
-6. `Load Scene` 后，OpenGL Preview 与 Scene Panel 显示加载后的场景。
+- 单轴拖拽基于屏幕位移投影，手感是稳定可用的近似 gizmo，不是完整三维变换操纵器。
+- 当前没有显示彩色 XYZ 轴 gizmo，可在后续阶段添加。
+- Plane 和 PointLight 暂不支持拖拽。
 
 ## 记录到 VALIDATION_REPORT.md
 
@@ -110,6 +102,5 @@ Validation Agent 完成后，请记录：
 - CMake configure 结果。
 - Release build 结果。
 - `--self-test` 输出和返回码。
-- 球体拖拽的手工验证结果。
-- CPU 渲染 snapshot 行为验证结果。
+- 六种 Drag Mode 的手工验证结果。
 - 如有失败，记录第一个关键错误和 suspected cause。

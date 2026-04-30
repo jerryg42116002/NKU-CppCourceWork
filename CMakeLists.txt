@@ -19,6 +19,8 @@ add_executable(TinyRayStudio WIN32
     src/gui/MainWindow.cpp
     src/gui/GLPreviewWidget.h
     src/gui/GLPreviewWidget.cpp
+    src/gui/RealTimeRenderWidget.h
+    src/gui/RealTimeRenderWidget.cpp
     src/gui/RenderWidget.h
     src/gui/RenderWidget.cpp
     src/gui/ScenePanel.h
@@ -34,8 +36,12 @@ add_executable(TinyRayStudio WIN32
     src/core/Material.h
     src/core/HitRecord.h
     src/core/Object.h
+    src/core/Box.h
+    src/core/Box.cpp
     src/core/Sphere.h
     src/core/Sphere.cpp
+    src/core/Cylinder.h
+    src/core/Cylinder.cpp
     src/core/Plane.h
     src/core/Plane.cpp
     src/core/Light.h
@@ -50,6 +56,7 @@ add_executable(TinyRayStudio WIN32
     src/core/Renderer.cpp
     src/interaction/Picking.h
     src/interaction/Picking.cpp
+    src/interaction/DragMode.h
 )
 
 target_include_directories(TinyRayStudio

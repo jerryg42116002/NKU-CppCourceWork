@@ -79,6 +79,12 @@ QString Scene::objectLabel(int objectId) const
     if (dynamic_cast<const Sphere*>(object)) {
         return QStringLiteral("Sphere #%1").arg(objectId);
     }
+    if (dynamic_cast<const Box*>(object)) {
+        return QStringLiteral("Box #%1").arg(objectId);
+    }
+    if (dynamic_cast<const Cylinder*>(object)) {
+        return QStringLiteral("Cylinder #%1").arg(objectId);
+    }
     if (dynamic_cast<const Plane*>(object)) {
         return QStringLiteral("Plane #%1").arg(objectId);
     }
@@ -111,6 +117,9 @@ Scene Scene::createReflectionDemo()
     Material greenMaterial;
     greenMaterial.albedo = Vec3(0.25, 0.75, 0.35);
 
+    Material purpleMaterial;
+    purpleMaterial.albedo = Vec3(0.58, 0.32, 0.92);
+
     Material metalMaterial;
     metalMaterial.type = MaterialType::Metal;
     metalMaterial.albedo = Vec3(0.86, 0.82, 0.72);
@@ -121,12 +130,20 @@ Scene Scene::createReflectionDemo()
     glassMaterial.albedo = Vec3(0.96, 0.98, 1.0);
     glassMaterial.refractiveIndex = 1.5;
 
+    Material glassBoxMaterial;
+    glassBoxMaterial.type = MaterialType::Glass;
+    glassBoxMaterial.albedo = Vec3(0.78, 0.92, 1.0);
+    glassBoxMaterial.refractiveIndex = 1.5;
+
     scene.addPlane(Plane(Vec3(0.0, -0.5, 0.0), Vec3(0.0, 1.0, 0.0), groundMaterial));
     scene.addSphere(Sphere(Vec3(-1.35, 0.0, 0.05), 0.5, redMaterial));
     scene.addSphere(Sphere(Vec3(-0.25, 0.0, -0.35), 0.5, metalMaterial));
     scene.addSphere(Sphere(Vec3(0.85, 0.0, -0.15), 0.5, glassMaterial));
     scene.addSphere(Sphere(Vec3(0.0, 0.75, -1.35), 0.35, blueMaterial));
     scene.addSphere(Sphere(Vec3(1.65, -0.08, 0.2), 0.42, greenMaterial));
+    scene.addBox(Box(Vec3(-1.95, -0.12, -1.25), Vec3(0.65, 0.75, 0.65), purpleMaterial));
+    scene.addCylinder(Cylinder(Vec3(1.85, -0.05, -1.1), 0.32, 0.9, metalMaterial));
+    scene.addBox(Box(Vec3(1.95, -0.15, -1.85), Vec3(0.55, 0.68, 0.55), glassBoxMaterial));
     scene.addLight(Light(Vec3(2.5, 4.0, 2.5), Vec3(1.0, 0.96, 0.88), 24.0));
 
     return scene;
@@ -148,16 +165,33 @@ Scene Scene::createGlassDemo()
     glassMaterial.albedo = Vec3(0.96, 0.98, 1.0);
     glassMaterial.refractiveIndex = 1.5;
 
+    Material glassBoxMaterial;
+    glassBoxMaterial.type = MaterialType::Glass;
+    glassBoxMaterial.albedo = Vec3(0.78, 0.92, 1.0);
+    glassBoxMaterial.refractiveIndex = 1.5;
+
     Material blueDiffuse;
     blueDiffuse.albedo = Vec3(0.15, 0.35, 0.90);
 
     Material warmDiffuse;
     warmDiffuse.albedo = Vec3(0.95, 0.55, 0.22);
 
+    Material tealDiffuse;
+    tealDiffuse.albedo = Vec3(0.18, 0.78, 0.72);
+
+    Material metalMaterial;
+    metalMaterial.type = MaterialType::Metal;
+    metalMaterial.albedo = Vec3(0.88, 0.84, 0.72);
+    metalMaterial.roughness = 0.10;
+
     scene.addPlane(Plane(Vec3(0.0, -0.5, 0.0), Vec3(0.0, 1.0, 0.0), groundMaterial));
     scene.addSphere(Sphere(Vec3(-0.65, 0.05, -0.35), 0.55, glassMaterial));
     scene.addSphere(Sphere(Vec3(0.85, -0.02, -0.65), 0.48, blueDiffuse));
     scene.addSphere(Sphere(Vec3(-1.55, -0.12, 0.45), 0.38, warmDiffuse));
+    scene.addBox(Box(Vec3(1.65, -0.22, 0.38), Vec3(0.58, 0.55, 0.58), tealDiffuse));
+    scene.addCylinder(Cylinder(Vec3(-1.95, -0.14, -0.85), 0.28, 0.72, warmDiffuse));
+    scene.addBox(Box(Vec3(1.55, -0.16, -1.45), Vec3(0.58, 0.68, 0.58), metalMaterial));
+    scene.addCylinder(Cylinder(Vec3(-1.25, -0.08, -1.55), 0.30, 0.84, glassMaterial));
     scene.addLight(Light(Vec3(-2.8, 3.4, 1.8), Vec3(0.75, 0.86, 1.0), 20.0));
     scene.addLight(Light(Vec3(2.6, 3.0, 2.4), Vec3(1.0, 0.78, 0.52), 18.0));
 
@@ -191,11 +225,23 @@ Scene Scene::createColoredLightsDemo()
     glassMaterial.albedo = Vec3(0.92, 0.98, 1.0);
     glassMaterial.refractiveIndex = 1.5;
 
+    Material violetMaterial;
+    violetMaterial.albedo = Vec3(0.62, 0.28, 0.88);
+
+    Material cyanGlassMaterial;
+    cyanGlassMaterial.type = MaterialType::Glass;
+    cyanGlassMaterial.albedo = Vec3(0.78, 0.95, 1.0);
+    cyanGlassMaterial.refractiveIndex = 1.5;
+
     scene.addPlane(Plane(Vec3(0.0, -0.5, 0.0), Vec3(0.0, 1.0, 0.0), groundMaterial));
     scene.addSphere(Sphere(Vec3(-1.35, 0.0, -0.15), 0.5, redMaterial));
     scene.addSphere(Sphere(Vec3(-0.15, 0.0, -0.55), 0.5, metalMaterial));
     scene.addSphere(Sphere(Vec3(1.05, 0.0, -0.2), 0.5, glassMaterial));
     scene.addSphere(Sphere(Vec3(0.15, 0.85, -1.45), 0.35, greenMaterial));
+    scene.addBox(Box(Vec3(-2.05, -0.13, -0.95), Vec3(0.62, 0.74, 0.62), violetMaterial));
+    scene.addCylinder(Cylinder(Vec3(2.0, -0.09, -1.1), 0.30, 0.82, redMaterial));
+    scene.addBox(Box(Vec3(-0.95, -0.15, -1.85), Vec3(0.55, 0.70, 0.55), metalMaterial));
+    scene.addCylinder(Cylinder(Vec3(1.35, -0.08, -1.75), 0.28, 0.84, cyanGlassMaterial));
     scene.addLight(Light(Vec3(-2.6, 2.8, 1.5), Vec3(1.0, 0.18, 0.15), 18.0));
     scene.addLight(Light(Vec3(2.6, 2.8, 1.5), Vec3(0.15, 0.35, 1.0), 18.0));
     scene.addLight(Light(Vec3(0.0, 3.6, 1.0), Vec3(0.30, 1.0, 0.45), 16.0));

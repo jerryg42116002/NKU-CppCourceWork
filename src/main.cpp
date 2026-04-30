@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QPoint>
+#include <QSize>
 #include <QString>
 
 #include <cmath>
@@ -7,10 +9,13 @@
 
 #include "core/HitRecord.h"
 #include "core/OrbitCamera.h"
+#include "core/Box.h"
+#include "core/Cylinder.h"
 #include "core/Plane.h"
 #include "core/Ray.h"
 #include "core/Scene.h"
 #include "core/Sphere.h"
+#include "interaction/Picking.h"
 #include "gui/MainWindow.h"
 
 namespace {
@@ -43,6 +48,16 @@ int runSelfTest()
     camera.pan(120.0, -80.0);
     if (!camera.isValid() || !finite(camera.target) || !finite(camera.position())) {
         std::cerr << "OrbitCamera became invalid after pan.\n";
+        return 1;
+    }
+
+    const tinyray::Ray pickingRay = tinyray::makePickingRay(QPoint(400, 225),
+                                                            QSize(800, 450),
+                                                            camera);
+    if (!finite(pickingRay.origin)
+        || !finite(pickingRay.direction)
+        || pickingRay.direction.nearZero()) {
+        std::cerr << "Picking ray is invalid.\n";
         return 1;
     }
 
@@ -80,6 +95,28 @@ int runSelfTest()
     if (pickScene.intersect(missRay, 0.001, 1000.0, missRecord)
         || missRecord.hitObjectId != -1) {
         std::cerr << "Miss ray incorrectly selected an object.\n";
+        return 1;
+    }
+
+    tinyray::Material testMaterial;
+    tinyray::Box testBox(tinyray::Vec3(0.0, 0.0, -3.0),
+                         tinyray::Vec3(1.0, 1.0, 1.0),
+                         testMaterial);
+    tinyray::HitRecord boxRecord;
+    if (!testBox.intersect(hitRay, 0.001, 1000.0, boxRecord)
+        || boxRecord.hitObjectId != testBox.id()) {
+        std::cerr << "Box intersection did not report the expected object id.\n";
+        return 1;
+    }
+
+    tinyray::Cylinder testCylinder(tinyray::Vec3(0.0, 0.0, -3.0),
+                                   0.5,
+                                   1.0,
+                                   testMaterial);
+    tinyray::HitRecord cylinderRecord;
+    if (!testCylinder.intersect(hitRay, 0.001, 1000.0, cylinderRecord)
+        || cylinderRecord.hitObjectId != testCylinder.id()) {
+        std::cerr << "Cylinder intersection did not report the expected object id.\n";
         return 1;
     }
 

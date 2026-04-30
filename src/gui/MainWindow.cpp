@@ -21,14 +21,14 @@
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QStatusBar>
-#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include "core/SceneIO.h"
+#include "core/Box.h"
+#include "core/Cylinder.h"
 #include "core/Sphere.h"
-#include "gui/GLPreviewWidget.h"
-#include "gui/RenderWidget.h"
+#include "gui/RealTimeRenderWidget.h"
 #include "gui/ScenePanel.h"
 
 MainWindow::MainWindow(QWidget* parent)
@@ -39,21 +39,23 @@ MainWindow::MainWindow(QWidget* parent)
     setMinimumSize(860, 520);
     scene_ = tinyray::Scene::createDefaultScene();
 
-    centralTabs_ = new QTabWidget(this);
-    glPreviewWidget_ = new GLPreviewWidget(centralTabs_);
-    renderWidget_ = new RenderWidget(centralTabs_);
-    glPreviewWidget_->setScene(scene_);
-    connect(glPreviewWidget_, &GLPreviewWidget::objectSelected,
-            this, &MainWindow::handlePreviewObjectSelected);
-    connect(glPreviewWidget_, &GLPreviewWidget::sphereMoved,
-            this, &MainWindow::handlePreviewSphereMoved);
-    centralTabs_->addTab(glPreviewWidget_, QStringLiteral("Preview"));
-    centralTabs_->addTab(renderWidget_, QStringLiteral("Render Result"));
-    setCentralWidget(centralTabs_);
+    realTimeRenderWidget_ = new RealTimeRenderWidget(this);
+    realTimeRenderWidget_->setScene(scene_);
+    connect(realTimeRenderWidget_, &RealTimeRenderWidget::objectSelected,
+            this, &MainWindow::handleRealTimeObjectSelected);
+    connect(realTimeRenderWidget_, &RealTimeRenderWidget::objectMoved,
+            this, &MainWindow::handleRealTimeObjectMoved);
+    setCentralWidget(realTimeRenderWidget_);
 
     createMenus();
     createControlPanel();
     createStatusBar();
+    connect(realTimeRenderWidget_, &RealTimeRenderWidget::interactionStatusChanged,
+            this, [this](const QString& status) {
+                if (statusLabel_ != nullptr) {
+                    statusLabel_->setText(status);
+                }
+            });
 
     connect(this, &MainWindow::renderProgressChanged,
             this, &MainWindow::updateRenderProgress,
@@ -84,7 +86,7 @@ void MainWindow::createMenus()
     QAction* exitAction = fileMenu->addAction(QStringLiteral("Exit"));
 
     auto* renderMenu = menuBar()->addMenu(QStringLiteral("Render"));
-    QAction* startRenderAction = renderMenu->addAction(QStringLiteral("Start Render"));
+    QAction* startRenderAction = renderMenu->addAction(QStringLiteral("High Quality Render"));
     QAction* stopRenderAction = renderMenu->addAction(QStringLiteral("Stop Render"));
     QAction* clearImageAction = renderMenu->addAction(QStringLiteral("Clear Image"));
 
@@ -151,11 +153,20 @@ void MainWindow::createControlPanel()
     threadsSpinBox_->setRange(1, 128);
     threadsSpinBox_->setValue(std::clamp(defaults.threadCount, 1, 128));
 
+    dragModeComboBox_ = new QComboBox(settingsGroup);
+    dragModeComboBox_->addItem(QStringLiteral("Move XZ Plane"), static_cast<int>(tinyray::ObjectDragMode::PlaneXZ));
+    dragModeComboBox_->addItem(QStringLiteral("Move XY Plane"), static_cast<int>(tinyray::ObjectDragMode::PlaneXY));
+    dragModeComboBox_->addItem(QStringLiteral("Move YZ Plane"), static_cast<int>(tinyray::ObjectDragMode::PlaneYZ));
+    dragModeComboBox_->addItem(QStringLiteral("Move X Axis"), static_cast<int>(tinyray::ObjectDragMode::AxisX));
+    dragModeComboBox_->addItem(QStringLiteral("Move Y Axis"), static_cast<int>(tinyray::ObjectDragMode::AxisY));
+    dragModeComboBox_->addItem(QStringLiteral("Move Z Axis"), static_cast<int>(tinyray::ObjectDragMode::AxisZ));
+
     settingsLayout->addRow(QStringLiteral("Width"), widthSpinBox_);
     settingsLayout->addRow(QStringLiteral("Height"), heightSpinBox_);
     settingsLayout->addRow(QStringLiteral("Samples"), samplesComboBox_);
     settingsLayout->addRow(QStringLiteral("Max Depth"), maxDepthSpinBox_);
     settingsLayout->addRow(QStringLiteral("Threads"), threadsSpinBox_);
+    settingsLayout->addRow(QStringLiteral("Drag Mode"), dragModeComboBox_);
 
     scenePanel_ = new ScenePanel(panel);
     scenePanel_->setScene(scene_);
@@ -164,7 +175,7 @@ void MainWindow::createControlPanel()
     auto* outputLayout = new QVBoxLayout(outputGroup);
     outputLayout->setSpacing(8);
 
-    renderButton_ = new QPushButton(QStringLiteral("Render"), outputGroup);
+    renderButton_ = new QPushButton(QStringLiteral("High Quality Render"), outputGroup);
     stopButton_ = new QPushButton(QStringLiteral("Stop"), outputGroup);
     saveImageButton_ = new QPushButton(QStringLiteral("Save Image"), outputGroup);
     saveSceneButton_ = new QPushButton(QStringLiteral("Save Scene"), outputGroup);
@@ -195,13 +206,21 @@ void MainWindow::createControlPanel()
     connect(loadSceneButton_, &QPushButton::clicked, this, &MainWindow::handleLoadScene);
     connect(clearButton_, &QPushButton::clicked, this, &MainWindow::handleClearImage);
     connect(scenePanel_, &ScenePanel::sceneChanged, this, &MainWindow::handleSceneChanged);
+    connect(dragModeComboBox_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+        if (realTimeRenderWidget_ == nullptr) {
+            return;
+        }
+        const auto mode = static_cast<tinyray::ObjectDragMode>(dragModeComboBox_->itemData(index).toInt());
+        realTimeRenderWidget_->setObjectDragMode(mode);
+        statusLabel_->setText(QStringLiteral("Drag mode updated"));
+    });
 
     setRenderControlsEnabled(true);
 }
 
 void MainWindow::createStatusBar()
 {
-    statusLabel_ = new QLabel(QStringLiteral("Ready"), this);
+    statusLabel_ = new QLabel(QStringLiteral("Real-time rendering"), this);
     statusLabel_->setMinimumWidth(220);
 
     progressBar_ = new QProgressBar(this);
@@ -257,10 +276,9 @@ void MainWindow::handleRender()
     const tinyray::RenderSettings settings = currentRenderSettings();
     const tinyray::Scene scene = scene_;
 
-    centralTabs_->setCurrentWidget(renderWidget_);
     setRenderControlsEnabled(false);
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    statusLabel_->setText(QStringLiteral("Sample 0/%1 | 0% | 0.0s").arg(settings.samplesPerPixel));
+    statusLabel_->setText(QStringLiteral("High quality rendering | Sample 0/%1 | 0% | 0.0s").arg(settings.samplesPerPixel));
     progressBar_->setValue(0);
 
     renderer_.resetStopFlag();
@@ -301,9 +319,15 @@ void MainWindow::handleStop()
 
 void MainWindow::handleSaveImage()
 {
-    if (renderWidget_->image().isNull()) {
-        QMessageBox::information(this, QStringLiteral("Save Image"),
-                                 QStringLiteral("There is no rendered image to save."));
+    QImage imageToSave = highQualityImage_;
+    if (imageToSave.isNull() && realTimeRenderWidget_ != nullptr) {
+        imageToSave = realTimeRenderWidget_->grabFramebuffer();
+    }
+
+    if (imageToSave.isNull()) {
+        QMessageBox::information(this,
+                                 QStringLiteral("Save Image"),
+                                 QStringLiteral("There is no image to save."));
         return;
     }
 
@@ -321,20 +345,22 @@ void MainWindow::handleSaveImage()
         fileName += QStringLiteral(".png");
     }
 
-    if (!renderWidget_->image().save(fileName, "PNG")) {
+    if (!imageToSave.save(fileName, "PNG")) {
         QMessageBox::warning(this, QStringLiteral("Save Image"),
                              QStringLiteral("Failed to save the PNG image."));
         return;
     }
 
-    statusLabel_->setText(QStringLiteral("Image saved"));
+    statusLabel_->setText(highQualityImage_.isNull()
+                              ? QStringLiteral("Real-time viewport image saved")
+                              : QStringLiteral("High quality image saved"));
 }
 
 void MainWindow::handleClearImage()
 {
-    renderWidget_->clearImage();
+    highQualityImage_ = QImage();
     progressBar_->setValue(0);
-    statusLabel_->setText(QStringLiteral("Preview cleared"));
+    statusLabel_->setText(QStringLiteral("Real-time rendering"));
 }
 
 void MainWindow::handleSaveScene()
@@ -388,9 +414,9 @@ void MainWindow::handleLoadScene()
     scene_ = loadedScene;
     scenePanel_->setScene(scene_);
     scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
-    glPreviewWidget_->setScene(scene_);
+    realTimeRenderWidget_->setScene(scene_);
     applyRenderSettings(loadedSettings);
-    renderWidget_->clearImage();
+    highQualityImage_ = QImage();
     progressBar_->setValue(0);
     statusLabel_->setText(QStringLiteral("Scene loaded"));
 }
@@ -402,8 +428,9 @@ void MainWindow::handleAbout()
         QStringLiteral("About TinyRay Studio"),
         QStringLiteral("TinyRay Studio\n\n"
                        "C++17 + Qt Widgets + CPU Ray Tracing\n\n"
-                       "Supports shadows, diffuse shading, metal reflection, glass refraction, "
-                       "anti-aliasing, gamma correction, multi-threaded rendering, progressive preview, "
+                       "Supports real-time OpenGL interaction, object selection, sphere dragging, "
+                       "shadows, diffuse shading, metal reflection, glass refraction, "
+                       "anti-aliasing, gamma correction, multi-threaded high quality rendering, "
                        "scene editing, and PNG export."));
 }
 
@@ -417,35 +444,47 @@ void MainWindow::handleSceneChanged(const tinyray::Scene& scene)
         scene_.selectedObjectId = -1;
     }
 
-    glPreviewWidget_->setScene(scene_);
+    realTimeRenderWidget_->setScene(scene_);
     scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
+    highQualityImage_ = QImage();
     statusLabel_->setText(QStringLiteral("Scene updated"));
 }
 
-void MainWindow::handlePreviewObjectSelected(int objectId)
+void MainWindow::handleRealTimeObjectSelected(int objectId)
 {
     scene_.selectedObjectId = objectId;
     scenePanel_->setSelectedObjectId(objectId);
     if (objectId < 0) {
-        statusLabel_->setText(QStringLiteral("Selection cleared"));
+        statusLabel_->setText(QStringLiteral("Real-time rendering"));
         return;
     }
 
-    statusLabel_->setText(QStringLiteral("Selected %1").arg(scene_.objectLabel(objectId)));
+    statusLabel_->setText(QStringLiteral("Real-time rendering | Selected %1").arg(scene_.objectLabel(objectId)));
 }
 
-void MainWindow::handlePreviewSphereMoved(int objectId, double x, double y, double z)
+void MainWindow::handleRealTimeObjectMoved(int objectId, double x, double y, double z)
 {
-    auto* sphere = dynamic_cast<tinyray::Sphere*>(scene_.objectById(objectId));
-    if (sphere == nullptr) {
+    tinyray::Object* object = scene_.objectById(objectId);
+    if (object == nullptr) {
         return;
     }
 
-    sphere->center = tinyray::Vec3(x, y, z);
+    const tinyray::Vec3 newCenter(x, y, z);
+    if (auto* sphere = dynamic_cast<tinyray::Sphere*>(object)) {
+        sphere->center = newCenter;
+    } else if (auto* box = dynamic_cast<tinyray::Box*>(object)) {
+        box->center = newCenter;
+    } else if (auto* cylinder = dynamic_cast<tinyray::Cylinder*>(object)) {
+        cylinder->center = newCenter;
+    } else {
+        return;
+    }
+
     scene_.selectedObjectId = objectId;
+    highQualityImage_ = QImage();
     scenePanel_->setScene(scene_);
     scenePanel_->setSelectedObjectId(objectId);
-    statusLabel_->setText(QStringLiteral("Moved %1").arg(scene_.objectLabel(objectId)));
+    statusLabel_->setText(QStringLiteral("Object dragging | %1").arg(scene_.objectLabel(objectId)));
 }
 
 void MainWindow::updateRenderProgress(int progress)
@@ -460,11 +499,11 @@ void MainWindow::updateRenderPreview(const QImage& image,
                                      int progress,
                                      double elapsedSeconds)
 {
-    renderWidget_->setImage(image);
+    highQualityImage_ = image;
 
     const int clampedProgress = std::clamp(progress, 0, 100);
     progressBar_->setValue(clampedProgress);
-    statusLabel_->setText(QStringLiteral("Sample %1/%2 | %3% | %4s")
+    statusLabel_->setText(QStringLiteral("High quality rendering | Sample %1/%2 | %3% | %4s")
                               .arg(currentSample)
                               .arg(totalSamples)
                               .arg(clampedProgress)
@@ -477,7 +516,7 @@ void MainWindow::handleRenderFinished(const QImage& image, bool stopped)
         renderThread_.join();
     }
 
-    renderWidget_->setImage(image);
+    highQualityImage_ = image;
     QApplication::restoreOverrideCursor();
     setRenderControlsEnabled(true);
 
@@ -485,6 +524,6 @@ void MainWindow::handleRenderFinished(const QImage& image, bool stopped)
         statusLabel_->setText(QStringLiteral("Render stopped"));
     } else {
         progressBar_->setValue(100);
-        statusLabel_->setText(QStringLiteral("Done"));
+        statusLabel_->setText(QStringLiteral("Render done"));
     }
 }

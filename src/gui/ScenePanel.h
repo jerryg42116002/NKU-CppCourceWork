@@ -29,13 +29,19 @@ private slots:
     void handlePresetChanged(int index);
     void handleSelectionChanged();
     void handleAddSphere();
+    void handleAddBox();
+    void handleAddCylinder();
     void handleAddPlane();
     void handleAddLight();
     void handleDeleteSelected();
     void handleSphereChanged();
+    void handleBoxChanged();
+    void handleCylinderChanged();
     void handlePlaneChanged();
     void handleLightChanged();
     void chooseSphereAlbedo();
+    void chooseBoxAlbedo();
+    void chooseCylinderAlbedo();
     void choosePlaneAlbedo();
     void chooseLightColor();
 
@@ -53,10 +59,14 @@ private:
     void emitSceneChanged();
 
     void setSphereEditor(const tinyray::Sphere& sphere);
+    void setBoxEditor(const tinyray::Box& box);
+    void setCylinderEditor(const tinyray::Cylinder& cylinder);
     void setPlaneEditor(const tinyray::Plane& plane);
     void setLightEditor(const tinyray::Light& light);
 
     tinyray::Sphere* selectedSphere();
+    tinyray::Box* selectedBox();
+    tinyray::Cylinder* selectedCylinder();
     tinyray::Plane* selectedPlane();
     tinyray::Light* selectedLight();
 
@@ -64,6 +74,8 @@ private:
     void updateColorButton(QPushButton* button, const QColor& color);
 
     tinyray::Material readSphereMaterial() const;
+    tinyray::Material readBoxMaterial() const;
+    tinyray::Material readCylinderMaterial() const;
     tinyray::Material readPlaneMaterial() const;
     void writeMaterialToControls(const tinyray::Material& material,
                                  QComboBox* typeCombo,
@@ -78,6 +90,8 @@ private:
     QComboBox* presetComboBox_ = nullptr;
     QListWidget* objectList_ = nullptr;
     QPushButton* addSphereButton_ = nullptr;
+    QPushButton* addBoxButton_ = nullptr;
+    QPushButton* addCylinderButton_ = nullptr;
     QPushButton* addPlaneButton_ = nullptr;
     QPushButton* addLightButton_ = nullptr;
     QPushButton* deleteButton_ = nullptr;
@@ -92,6 +106,29 @@ private:
     QDoubleSpinBox* sphereRoughness_ = nullptr;
     QDoubleSpinBox* sphereRefractiveIndex_ = nullptr;
     QColor sphereAlbedo_ = QColor(204, 204, 204);
+
+    QDoubleSpinBox* boxCenterX_ = nullptr;
+    QDoubleSpinBox* boxCenterY_ = nullptr;
+    QDoubleSpinBox* boxCenterZ_ = nullptr;
+    QDoubleSpinBox* boxSizeX_ = nullptr;
+    QDoubleSpinBox* boxSizeY_ = nullptr;
+    QDoubleSpinBox* boxSizeZ_ = nullptr;
+    QComboBox* boxMaterialType_ = nullptr;
+    QPushButton* boxAlbedoButton_ = nullptr;
+    QDoubleSpinBox* boxRoughness_ = nullptr;
+    QDoubleSpinBox* boxRefractiveIndex_ = nullptr;
+    QColor boxAlbedo_ = QColor(204, 204, 204);
+
+    QDoubleSpinBox* cylinderCenterX_ = nullptr;
+    QDoubleSpinBox* cylinderCenterY_ = nullptr;
+    QDoubleSpinBox* cylinderCenterZ_ = nullptr;
+    QDoubleSpinBox* cylinderRadius_ = nullptr;
+    QDoubleSpinBox* cylinderHeight_ = nullptr;
+    QComboBox* cylinderMaterialType_ = nullptr;
+    QPushButton* cylinderAlbedoButton_ = nullptr;
+    QDoubleSpinBox* cylinderRoughness_ = nullptr;
+    QDoubleSpinBox* cylinderRefractiveIndex_ = nullptr;
+    QColor cylinderAlbedo_ = QColor(204, 204, 204);
 
     QDoubleSpinBox* planePointX_ = nullptr;
     QDoubleSpinBox* planePointY_ = nullptr;

@@ -5,6 +5,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "core/Box.h"
+#include "core/Cylinder.h"
 #include "core/Plane.h"
 #include "core/Sphere.h"
 
@@ -124,6 +126,23 @@ bool SceneIO::saveToFile(const Scene& scene,
             item["radius"] = sphere->radius;
             item["material"] = materialToJson(sphere->material);
             objects.append(item);
+        } else if (const auto* box = dynamic_cast<const Box*>(object.get())) {
+            QJsonObject item;
+            item["type"] = "Box";
+            item["id"] = box->id();
+            item["center"] = vecToJson(box->center);
+            item["size"] = vecToJson(box->size);
+            item["material"] = materialToJson(box->material);
+            objects.append(item);
+        } else if (const auto* cylinder = dynamic_cast<const Cylinder*>(object.get())) {
+            QJsonObject item;
+            item["type"] = "Cylinder";
+            item["id"] = cylinder->id();
+            item["center"] = vecToJson(cylinder->center);
+            item["radius"] = cylinder->radius;
+            item["height"] = cylinder->height;
+            item["material"] = materialToJson(cylinder->material);
+            objects.append(item);
         } else if (const auto* plane = dynamic_cast<const Plane*>(object.get())) {
             QJsonObject item;
             item["type"] = "Plane";
@@ -204,6 +223,21 @@ bool SceneIO::loadFromFile(const QString& fileName,
                 material);
             sphere.setId(item.value("id").toInt(sphere.id()));
             loadedScene.addSphere(sphere);
+        } else if (type == "Box") {
+            Box box(
+                vecFromJson(item.value("center").toObject(), Vec3(0.0, 0.0, 0.0)),
+                vecFromJson(item.value("size").toObject(), Vec3(1.0, 1.0, 1.0)),
+                material);
+            box.setId(item.value("id").toInt(box.id()));
+            loadedScene.addBox(box);
+        } else if (type == "Cylinder") {
+            Cylinder cylinder(
+                vecFromJson(item.value("center").toObject(), Vec3(0.0, 0.0, 0.0)),
+                item.value("radius").toDouble(0.5),
+                item.value("height").toDouble(1.0),
+                material);
+            cylinder.setId(item.value("id").toInt(cylinder.id()));
+            loadedScene.addCylinder(cylinder);
         } else if (type == "Plane") {
             Plane plane(
                 vecFromJson(item.value("point").toObject(), Vec3(0.0, 0.0, 0.0)),

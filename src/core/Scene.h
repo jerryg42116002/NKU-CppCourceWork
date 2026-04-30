@@ -7,6 +7,8 @@
 #include <QString>
 
 #include "core/Camera.h"
+#include "core/Box.h"
+#include "core/Cylinder.h"
 #include "core/HitRecord.h"
 #include "core/Light.h"
 #include "core/Object.h"
@@ -48,6 +50,16 @@ public:
     void addPlane(const Plane& plane)
     {
         addObject(std::make_shared<Plane>(plane));
+    }
+
+    void addBox(const Box& box)
+    {
+        addObject(std::make_shared<Box>(box));
+    }
+
+    void addCylinder(const Cylinder& cylinder)
+    {
+        addObject(std::make_shared<Cylinder>(cylinder));
     }
 
     void addLight(const Light& light)

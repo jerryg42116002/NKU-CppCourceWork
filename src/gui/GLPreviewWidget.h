@@ -1,13 +1,19 @@
 #pragma once
 
 #include <QOpenGLFunctions>
+#include <QOpenGLFramebufferObject>
+#include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 #include <QPoint>
+#include <QString>
+
+#include <memory>
 
 #include "core/OrbitCamera.h"
 #include "core/Ray.h"
 #include "core/Scene.h"
 #include "core/Vec3.h"
+#include "interaction/DragMode.h"
 
 class QMouseEvent;
 class QWheelEvent;
@@ -21,12 +27,14 @@ public:
 
     void setScene(const tinyray::Scene& scene);
     void setSelectedObjectId(int objectId);
+    void setObjectDragMode(tinyray::ObjectDragMode mode);
     int selectedObjectId() const;
     const tinyray::OrbitCamera& orbitCamera() const;
 
 signals:
     void objectSelected(int objectId);
-    void sphereMoved(int objectId, double x, double y, double z);
+    void objectMoved(int objectId, double x, double y, double z);
+    void interactionStatusChanged(const QString& status);
 
 protected:
     void initializeGL() override;
@@ -48,7 +56,16 @@ private:
 
     void setupCameraMatrices();
     void setupLights();
+    void initializePathTracer();
+    QSize renderBufferSize() const;
+    void recreateAccumulationBuffers();
+    void resetPathTraceAccumulation();
+    void renderPathTracedScene();
+    void uploadPathTraceScene(QOpenGLShaderProgram& program);
+    void drawFullScreenTriangle(QOpenGLShaderProgram& program);
     void drawScene();
+    void drawBox(const tinyray::Box& box);
+    void drawCylinder(const tinyray::Cylinder& cylinder);
     void drawSphere(const tinyray::Sphere& sphere);
     void drawPlane(const tinyray::Plane& plane);
     void drawLightMarker(const tinyray::Light& light);
@@ -58,10 +75,20 @@ private:
     bool beginObjectDrag(const QPoint& screenPosition);
     void updateObjectDrag(const QPoint& screenPosition);
     void finishObjectDrag();
-    bool rayIntersectsGroundPlane(const tinyray::Ray& ray, tinyray::Vec3& hitPoint) const;
+    bool draggableObjectCenter(int objectId, tinyray::Vec3& center) const;
+    bool setDraggableObjectCenter(int objectId, const tinyray::Vec3& center);
+    bool rayIntersectsDragPlane(const tinyray::Ray& ray, tinyray::Vec3& hitPoint) const;
+    tinyray::Vec3 axisDragCenter(const QPoint& screenPosition) const;
+    tinyray::Vec3 dragAxisVector() const;
 
     tinyray::Scene scene_;
     tinyray::OrbitCamera camera_;
+    std::unique_ptr<QOpenGLShaderProgram> pathTraceProgram_;
+    std::unique_ptr<QOpenGLShaderProgram> displayProgram_;
+    std::unique_ptr<QOpenGLFramebufferObject> accumulationBuffers_[2];
+    int accumulationReadIndex_ = 0;
+    int pathTraceFrameIndex_ = 0;
+    bool pathTracerReady_ = false;
     QPoint pressMousePosition_;
     QPoint lastMousePosition_;
     int selectedObjectId_ = -1;
@@ -70,5 +97,6 @@ private:
     tinyray::Vec3 dragStartObjectCenter_;
     tinyray::Vec3 dragStartGroundPoint_;
     tinyray::Vec3 dragOffset_;
+    tinyray::ObjectDragMode objectDragMode_ = tinyray::ObjectDragMode::PlaneXZ;
     DragMode dragMode_ = DragMode::None;
 };

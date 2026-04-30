@@ -16,6 +16,8 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
+#include "core/Box.h"
+#include "core/Cylinder.h"
 #include "core/Plane.h"
 #include "core/Sphere.h"
 
@@ -71,6 +73,14 @@ QString materialName(tinyray::MaterialType type)
     }
 }
 
+tinyray::Material makeDiffuseMaterial(const tinyray::Vec3& albedo)
+{
+    tinyray::Material material;
+    material.type = tinyray::MaterialType::Diffuse;
+    material.albedo = albedo;
+    return material;
+}
+
 } // namespace
 
 ScenePanel::ScenePanel(QWidget* parent)
@@ -117,10 +127,14 @@ void ScenePanel::createUi()
 
     auto* buttonRow = new QHBoxLayout();
     addSphereButton_ = new QPushButton(QStringLiteral("Sphere"), sceneGroup);
+    addBoxButton_ = new QPushButton(QStringLiteral("Box"), sceneGroup);
+    addCylinderButton_ = new QPushButton(QStringLiteral("Cyl"), sceneGroup);
     addPlaneButton_ = new QPushButton(QStringLiteral("Plane"), sceneGroup);
     addLightButton_ = new QPushButton(QStringLiteral("Light"), sceneGroup);
     deleteButton_ = new QPushButton(QStringLiteral("Delete"), sceneGroup);
     buttonRow->addWidget(addSphereButton_);
+    buttonRow->addWidget(addBoxButton_);
+    buttonRow->addWidget(addCylinderButton_);
     buttonRow->addWidget(addPlaneButton_);
     buttonRow->addWidget(addLightButton_);
     buttonRow->addWidget(deleteButton_);
@@ -152,6 +166,54 @@ void ScenePanel::createUi()
     sphereLayout->addRow(QStringLiteral("Roughness"), sphereRoughness_);
     sphereLayout->addRow(QStringLiteral("Refractive Index"), sphereRefractiveIndex_);
     editorStack_->addWidget(spherePage);
+
+    auto* boxPage = new QWidget(editorStack_);
+    auto* boxLayout = new QFormLayout(boxPage);
+    boxCenterX_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    boxCenterY_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    boxCenterZ_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    boxSizeX_ = createDoubleSpinBox(0.01, 100.0, 0.05);
+    boxSizeY_ = createDoubleSpinBox(0.01, 100.0, 0.05);
+    boxSizeZ_ = createDoubleSpinBox(0.01, 100.0, 0.05);
+    boxMaterialType_ = new QComboBox(boxPage);
+    boxMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass")});
+    boxAlbedoButton_ = new QPushButton(boxPage);
+    boxRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
+    boxRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
+    boxLayout->addRow(QStringLiteral("Center X"), boxCenterX_);
+    boxLayout->addRow(QStringLiteral("Center Y"), boxCenterY_);
+    boxLayout->addRow(QStringLiteral("Center Z"), boxCenterZ_);
+    boxLayout->addRow(QStringLiteral("Size X"), boxSizeX_);
+    boxLayout->addRow(QStringLiteral("Size Y"), boxSizeY_);
+    boxLayout->addRow(QStringLiteral("Size Z"), boxSizeZ_);
+    boxLayout->addRow(QStringLiteral("Material"), boxMaterialType_);
+    boxLayout->addRow(QStringLiteral("Albedo"), boxAlbedoButton_);
+    boxLayout->addRow(QStringLiteral("Roughness"), boxRoughness_);
+    boxLayout->addRow(QStringLiteral("Refractive Index"), boxRefractiveIndex_);
+    editorStack_->addWidget(boxPage);
+
+    auto* cylinderPage = new QWidget(editorStack_);
+    auto* cylinderLayout = new QFormLayout(cylinderPage);
+    cylinderCenterX_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    cylinderCenterY_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    cylinderCenterZ_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    cylinderRadius_ = createDoubleSpinBox(0.01, 100.0, 0.05);
+    cylinderHeight_ = createDoubleSpinBox(0.01, 100.0, 0.05);
+    cylinderMaterialType_ = new QComboBox(cylinderPage);
+    cylinderMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass")});
+    cylinderAlbedoButton_ = new QPushButton(cylinderPage);
+    cylinderRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
+    cylinderRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
+    cylinderLayout->addRow(QStringLiteral("Center X"), cylinderCenterX_);
+    cylinderLayout->addRow(QStringLiteral("Center Y"), cylinderCenterY_);
+    cylinderLayout->addRow(QStringLiteral("Center Z"), cylinderCenterZ_);
+    cylinderLayout->addRow(QStringLiteral("Radius"), cylinderRadius_);
+    cylinderLayout->addRow(QStringLiteral("Height"), cylinderHeight_);
+    cylinderLayout->addRow(QStringLiteral("Material"), cylinderMaterialType_);
+    cylinderLayout->addRow(QStringLiteral("Albedo"), cylinderAlbedoButton_);
+    cylinderLayout->addRow(QStringLiteral("Roughness"), cylinderRoughness_);
+    cylinderLayout->addRow(QStringLiteral("Refractive Index"), cylinderRefractiveIndex_);
+    editorStack_->addWidget(cylinderPage);
 
     auto* planePage = new QWidget(editorStack_);
     auto* planeLayout = new QFormLayout(planePage);
@@ -199,6 +261,8 @@ void ScenePanel::createUi()
             this, &ScenePanel::handlePresetChanged);
     connect(objectList_, &QListWidget::currentRowChanged, this, &ScenePanel::handleSelectionChanged);
     connect(addSphereButton_, &QPushButton::clicked, this, &ScenePanel::handleAddSphere);
+    connect(addBoxButton_, &QPushButton::clicked, this, &ScenePanel::handleAddBox);
+    connect(addCylinderButton_, &QPushButton::clicked, this, &ScenePanel::handleAddCylinder);
     connect(addPlaneButton_, &QPushButton::clicked, this, &ScenePanel::handleAddPlane);
     connect(addLightButton_, &QPushButton::clicked, this, &ScenePanel::handleAddLight);
     connect(deleteButton_, &QPushButton::clicked, this, &ScenePanel::handleDeleteSelected);
@@ -208,6 +272,18 @@ void ScenePanel::createUi()
     }
     connect(sphereMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleSphereChanged);
     connect(sphereAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseSphereAlbedo);
+
+    for (QDoubleSpinBox* spinBox : {boxCenterX_, boxCenterY_, boxCenterZ_, boxSizeX_, boxSizeY_, boxSizeZ_, boxRoughness_, boxRefractiveIndex_}) {
+        connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBoxChanged);
+    }
+    connect(boxMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleBoxChanged);
+    connect(boxAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseBoxAlbedo);
+
+    for (QDoubleSpinBox* spinBox : {cylinderCenterX_, cylinderCenterY_, cylinderCenterZ_, cylinderRadius_, cylinderHeight_, cylinderRoughness_, cylinderRefractiveIndex_}) {
+        connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleCylinderChanged);
+    }
+    connect(cylinderMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleCylinderChanged);
+    connect(cylinderAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseCylinderAlbedo);
 
     for (QDoubleSpinBox* spinBox : {planePointX_, planePointY_, planePointZ_, planeNormalX_, planeNormalY_, planeNormalZ_, planeRoughness_, planeRefractiveIndex_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handlePlaneChanged);
@@ -247,8 +323,7 @@ void ScenePanel::handleSelectionChanged()
 
 void ScenePanel::handleAddSphere()
 {
-    tinyray::Material material;
-    material.albedo = tinyray::Vec3(0.80, 0.35, 0.25);
+    const tinyray::Material material = makeDiffuseMaterial(tinyray::Vec3(0.80, 0.35, 0.25));
     scene_.addSphere(tinyray::Sphere(tinyray::Vec3(0.0, 0.0, 0.0), 0.5, material));
     rebuildObjectList(1, static_cast<int>(scene_.objects.size()) - 1);
     emitSceneChanged();
@@ -259,6 +334,27 @@ void ScenePanel::handleAddPlane()
     tinyray::Material material;
     material.albedo = tinyray::Vec3(0.55, 0.55, 0.58);
     scene_.addPlane(tinyray::Plane(tinyray::Vec3(0.0, -0.5, 0.0), tinyray::Vec3(0.0, 1.0, 0.0), material));
+    rebuildObjectList(1, static_cast<int>(scene_.objects.size()) - 1);
+    emitSceneChanged();
+}
+
+void ScenePanel::handleAddBox()
+{
+    const tinyray::Material material = makeDiffuseMaterial(tinyray::Vec3(0.55, 0.30, 0.85));
+    scene_.addBox(tinyray::Box(tinyray::Vec3(-0.8, -0.05, -0.8),
+                               tinyray::Vec3(0.7, 0.9, 0.7),
+                               material));
+    rebuildObjectList(1, static_cast<int>(scene_.objects.size()) - 1);
+    emitSceneChanged();
+}
+
+void ScenePanel::handleAddCylinder()
+{
+    const tinyray::Material material = makeDiffuseMaterial(tinyray::Vec3(0.22, 0.62, 0.88));
+    scene_.addCylinder(tinyray::Cylinder(tinyray::Vec3(0.9, -0.05, -0.8),
+                                         0.35,
+                                         0.9,
+                                         material));
     rebuildObjectList(1, static_cast<int>(scene_.objects.size()) - 1);
     emitSceneChanged();
 }
@@ -303,6 +399,43 @@ void ScenePanel::handleSphereChanged()
     sphere->center = tinyray::Vec3(sphereCenterX_->value(), sphereCenterY_->value(), sphereCenterZ_->value());
     sphere->radius = sphereRadius_->value();
     sphere->material = readSphereMaterial();
+    rebuildObjectList(1, objectList_->currentItem()->data(Qt::UserRole + 1).toInt());
+    emitSceneChanged();
+}
+
+void ScenePanel::handleBoxChanged()
+{
+    if (updating_) {
+        return;
+    }
+
+    tinyray::Box* box = selectedBox();
+    if (!box) {
+        return;
+    }
+
+    box->center = tinyray::Vec3(boxCenterX_->value(), boxCenterY_->value(), boxCenterZ_->value());
+    box->size = tinyray::Vec3(boxSizeX_->value(), boxSizeY_->value(), boxSizeZ_->value());
+    box->material = readBoxMaterial();
+    rebuildObjectList(1, objectList_->currentItem()->data(Qt::UserRole + 1).toInt());
+    emitSceneChanged();
+}
+
+void ScenePanel::handleCylinderChanged()
+{
+    if (updating_) {
+        return;
+    }
+
+    tinyray::Cylinder* cylinder = selectedCylinder();
+    if (!cylinder) {
+        return;
+    }
+
+    cylinder->center = tinyray::Vec3(cylinderCenterX_->value(), cylinderCenterY_->value(), cylinderCenterZ_->value());
+    cylinder->radius = cylinderRadius_->value();
+    cylinder->height = cylinderHeight_->value();
+    cylinder->material = readCylinderMaterial();
     rebuildObjectList(1, objectList_->currentItem()->data(Qt::UserRole + 1).toInt());
     emitSceneChanged();
 }
@@ -358,6 +491,26 @@ void ScenePanel::chooseSphereAlbedo()
     }
 }
 
+void ScenePanel::chooseBoxAlbedo()
+{
+    const QColor color = QColorDialog::getColor(boxAlbedo_, this, QStringLiteral("Choose Albedo"));
+    if (color.isValid()) {
+        boxAlbedo_ = color;
+        updateColorButton(boxAlbedoButton_, boxAlbedo_);
+        handleBoxChanged();
+    }
+}
+
+void ScenePanel::chooseCylinderAlbedo()
+{
+    const QColor color = QColorDialog::getColor(cylinderAlbedo_, this, QStringLiteral("Choose Albedo"));
+    if (color.isValid()) {
+        cylinderAlbedo_ = color;
+        updateColorButton(cylinderAlbedoButton_, cylinderAlbedo_);
+        handleCylinderChanged();
+    }
+}
+
 void ScenePanel::choosePlaneAlbedo()
 {
     const QColor color = QColorDialog::getColor(planeAlbedo_, this, QStringLiteral("Choose Albedo"));
@@ -388,6 +541,10 @@ void ScenePanel::rebuildObjectList(int preferredKind, int preferredIndex)
         QString label;
         if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object.get())) {
             label = QStringLiteral("Sphere %1 (%2)").arg(index + 1).arg(materialName(sphere->material.type));
+        } else if (const auto* box = dynamic_cast<const tinyray::Box*>(object.get())) {
+            label = QStringLiteral("Box %1 (%2)").arg(index + 1).arg(materialName(box->material.type));
+        } else if (const auto* cylinder = dynamic_cast<const tinyray::Cylinder*>(object.get())) {
+            label = QStringLiteral("Cylinder %1 (%2)").arg(index + 1).arg(materialName(cylinder->material.type));
         } else if (const auto* plane = dynamic_cast<const tinyray::Plane*>(object.get())) {
             label = QStringLiteral("Plane %1 (%2)").arg(index + 1).arg(materialName(plane->material.type));
         } else {
@@ -435,15 +592,21 @@ void ScenePanel::loadSelectedEditor()
         if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object.get())) {
             setSphereEditor(*sphere);
             editorStack_->setCurrentIndex(1);
+        } else if (const auto* box = dynamic_cast<const tinyray::Box*>(object.get())) {
+            setBoxEditor(*box);
+            editorStack_->setCurrentIndex(2);
+        } else if (const auto* cylinder = dynamic_cast<const tinyray::Cylinder*>(object.get())) {
+            setCylinderEditor(*cylinder);
+            editorStack_->setCurrentIndex(3);
         } else if (const auto* plane = dynamic_cast<const tinyray::Plane*>(object.get())) {
             setPlaneEditor(*plane);
-            editorStack_->setCurrentIndex(2);
+            editorStack_->setCurrentIndex(4);
         } else {
             editorStack_->setCurrentIndex(0);
         }
     } else if (kind == "light" && index >= 0 && index < static_cast<int>(scene_.lights.size())) {
         setLightEditor(scene_.lights[static_cast<std::size_t>(index)]);
-        editorStack_->setCurrentIndex(3);
+        editorStack_->setCurrentIndex(5);
     } else {
         editorStack_->setCurrentIndex(0);
     }
@@ -465,6 +628,29 @@ void ScenePanel::setSphereEditor(const tinyray::Sphere& sphere)
     sphereRadius_->setValue(sphere.radius);
     writeMaterialToControls(sphere.material, sphereMaterialType_, sphereRoughness_,
                             sphereRefractiveIndex_, sphereAlbedo_, sphereAlbedoButton_);
+}
+
+void ScenePanel::setBoxEditor(const tinyray::Box& box)
+{
+    boxCenterX_->setValue(box.center.x);
+    boxCenterY_->setValue(box.center.y);
+    boxCenterZ_->setValue(box.center.z);
+    boxSizeX_->setValue(box.size.x);
+    boxSizeY_->setValue(box.size.y);
+    boxSizeZ_->setValue(box.size.z);
+    writeMaterialToControls(box.material, boxMaterialType_, boxRoughness_,
+                            boxRefractiveIndex_, boxAlbedo_, boxAlbedoButton_);
+}
+
+void ScenePanel::setCylinderEditor(const tinyray::Cylinder& cylinder)
+{
+    cylinderCenterX_->setValue(cylinder.center.x);
+    cylinderCenterY_->setValue(cylinder.center.y);
+    cylinderCenterZ_->setValue(cylinder.center.z);
+    cylinderRadius_->setValue(cylinder.radius);
+    cylinderHeight_->setValue(cylinder.height);
+    writeMaterialToControls(cylinder.material, cylinderMaterialType_, cylinderRoughness_,
+                            cylinderRefractiveIndex_, cylinderAlbedo_, cylinderAlbedoButton_);
 }
 
 void ScenePanel::setPlaneEditor(const tinyray::Plane& plane)
@@ -502,6 +688,36 @@ tinyray::Sphere* ScenePanel::selectedSphere()
     }
 
     return dynamic_cast<tinyray::Sphere*>(scene_.objects[static_cast<std::size_t>(index)].get());
+}
+
+tinyray::Box* ScenePanel::selectedBox()
+{
+    const QListWidgetItem* item = objectList_->currentItem();
+    if (!item || item->data(Qt::UserRole).toString() != "object") {
+        return nullptr;
+    }
+
+    const int index = item->data(Qt::UserRole + 1).toInt();
+    if (index < 0 || index >= static_cast<int>(scene_.objects.size())) {
+        return nullptr;
+    }
+
+    return dynamic_cast<tinyray::Box*>(scene_.objects[static_cast<std::size_t>(index)].get());
+}
+
+tinyray::Cylinder* ScenePanel::selectedCylinder()
+{
+    const QListWidgetItem* item = objectList_->currentItem();
+    if (!item || item->data(Qt::UserRole).toString() != "object") {
+        return nullptr;
+    }
+
+    const int index = item->data(Qt::UserRole + 1).toInt();
+    if (index < 0 || index >= static_cast<int>(scene_.objects.size())) {
+        return nullptr;
+    }
+
+    return dynamic_cast<tinyray::Cylinder*>(scene_.objects[static_cast<std::size_t>(index)].get());
 }
 
 tinyray::Plane* ScenePanel::selectedPlane()
@@ -560,6 +776,26 @@ tinyray::Material ScenePanel::readSphereMaterial() const
     material.albedo = colorToVec3(sphereAlbedo_);
     material.roughness = sphereRoughness_->value();
     material.refractiveIndex = sphereRefractiveIndex_->value();
+    return material;
+}
+
+tinyray::Material ScenePanel::readBoxMaterial() const
+{
+    tinyray::Material material;
+    material.type = materialTypeFromIndex(boxMaterialType_->currentIndex());
+    material.albedo = colorToVec3(boxAlbedo_);
+    material.roughness = boxRoughness_->value();
+    material.refractiveIndex = boxRefractiveIndex_->value();
+    return material;
+}
+
+tinyray::Material ScenePanel::readCylinderMaterial() const
+{
+    tinyray::Material material;
+    material.type = materialTypeFromIndex(cylinderMaterialType_->currentIndex());
+    material.albedo = colorToVec3(cylinderAlbedo_);
+    material.roughness = cylinderRoughness_->value();
+    material.refractiveIndex = cylinderRefractiveIndex_->value();
     return material;
 }
 
