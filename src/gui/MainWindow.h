@@ -38,7 +38,9 @@ signals:
 
 private:
     void handleRealTimeObjectSelected(int objectId);
+    void handleRealTimeLightSelected(int lightIndex);
     void handleRealTimeObjectMoved(int objectId, double x, double y, double z);
+    void handleRealTimeLightMoved(int lightIndex, double x, double y, double z);
 
     void createMenus();
     void createControlPanel();

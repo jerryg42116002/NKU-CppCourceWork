@@ -70,6 +70,9 @@ void GLPreviewWidget::setScene(const tinyray::Scene& scene)
 {
     scene_ = scene;
     selectedObjectId_ = scene_.selectedObjectId;
+    if (selectedLightIndex_ >= static_cast<int>(scene_.lights.size())) {
+        selectedLightIndex_ = -1;
+    }
     resetPathTraceAccumulation();
     update();
 }
@@ -77,6 +80,7 @@ void GLPreviewWidget::setScene(const tinyray::Scene& scene)
 void GLPreviewWidget::setSelectedObjectId(int objectId)
 {
     selectedObjectId_ = objectId;
+    selectedLightIndex_ = -1;
     scene_.selectedObjectId = objectId;
     resetPathTraceAccumulation();
     update();
@@ -152,7 +156,7 @@ void GLPreviewWidget::mousePressEvent(QMouseEvent* event)
 void GLPreviewWidget::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint currentPosition = event->position().toPoint();
-    if (isDraggingObject_) {
+    if (isDraggingObject_ || isDraggingLight_) {
         updateObjectDrag(currentPosition);
         lastMousePosition_ = currentPosition;
         return;
@@ -176,7 +180,7 @@ void GLPreviewWidget::mouseMoveEvent(QMouseEvent* event)
 
 void GLPreviewWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton && isDraggingObject_) {
+    if (event->button() == Qt::LeftButton && (isDraggingObject_ || isDraggingLight_)) {
         finishObjectDrag();
     } else if (event->button() == Qt::LeftButton
         && dragMode_ == DragMode::Orbit
@@ -756,6 +760,9 @@ void GLPreviewWidget::renderPathTracedScene()
     drawFullScreenTriangle(*displayProgram_);
     displayProgram_->release();
 
+    setupCameraMatrices();
+    drawLightMarkersOverlay();
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     accumulationReadIndex_ = writeIndex;
@@ -763,6 +770,20 @@ void GLPreviewWidget::renderPathTracedScene()
     if (pathTraceFrameIndex_ < 8192) {
         update();
     }
+}
+
+void GLPreviewWidget::drawLightMarkersOverlay()
+{
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_CULL_FACE);
+
+    for (int index = 0; index < static_cast<int>(scene_.lights.size()); ++index) {
+        drawLightMarker(scene_.lights[static_cast<std::size_t>(index)], index == selectedLightIndex_);
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
 }
 
 void GLPreviewWidget::uploadPathTraceScene(QOpenGLShaderProgram& program)
@@ -916,7 +937,7 @@ void GLPreviewWidget::drawScene()
     }
 
     for (const tinyray::Light& light : scene_.lights) {
-        drawLightMarker(light);
+        drawLightMarker(light, false);
     }
 }
 
@@ -1071,16 +1092,20 @@ void GLPreviewWidget::drawPlane(const tinyray::Plane& plane)
     glEnd();
 }
 
-void GLPreviewWidget::drawLightMarker(const tinyray::Light& light)
+void GLPreviewWidget::drawLightMarker(const tinyray::Light& light, bool selected)
 {
     glDisable(GL_LIGHTING);
-    glLineWidth(2.0f);
-    glColor3d(std::clamp(light.color.x, 0.0, 1.0),
-              std::clamp(light.color.y, 0.0, 1.0),
-              std::clamp(light.color.z, 0.0, 1.0));
+    glLineWidth(selected ? 4.0f : 2.0f);
+    if (selected) {
+        glColor3d(1.0, 0.82, 0.12);
+    } else {
+        glColor3d(std::clamp(light.color.x, 0.0, 1.0),
+                  std::clamp(light.color.y, 0.0, 1.0),
+                  std::clamp(light.color.z, 0.0, 1.0));
+    }
 
     const tinyray::Vec3 p = light.position;
-    constexpr double size = 0.18;
+    const double size = selected ? 0.34 : 0.24;
 
     glBegin(GL_LINES);
     glVertex3d(p.x - size, p.y, p.z);
@@ -1089,6 +1114,11 @@ void GLPreviewWidget::drawLightMarker(const tinyray::Light& light)
     glVertex3d(p.x, p.y + size, p.z);
     glVertex3d(p.x, p.y, p.z - size);
     glVertex3d(p.x, p.y, p.z + size);
+    glEnd();
+
+    glPointSize(selected ? 11.0f : 8.0f);
+    glBegin(GL_POINTS);
+    glVertex3d(p.x, p.y, p.z);
     glEnd();
 
     glEnable(GL_LIGHTING);
@@ -1149,14 +1179,30 @@ bool GLPreviewWidget::isSelectionClick(const QPoint& releasePosition) const
 
 void GLPreviewWidget::updateSelectionFromClick(const QPoint& screenPosition)
 {
+    const tinyray::Ray ray = tinyray::makePickingRay(screenPosition, size(), camera_);
+    const int lightIndex = pickLight(ray);
+    if (lightIndex >= 0) {
+        selectedObjectId_ = -1;
+        selectedLightIndex_ = lightIndex;
+        scene_.selectedObjectId = -1;
+        emit lightSelected(lightIndex);
+        resetPathTraceAccumulation();
+        update();
+        return;
+    }
+
     const int objectId = tinyray::pickObjectId(screenPosition, size(), camera_, scene_);
-    if (selectedObjectId_ == objectId) {
+    if (selectedLightIndex_ < 0 && selectedObjectId_ == objectId) {
         return;
     }
 
     selectedObjectId_ = objectId;
+    selectedLightIndex_ = -1;
     scene_.selectedObjectId = objectId;
     emit objectSelected(objectId);
+    if (objectId < 0) {
+        emit lightSelected(-1);
+    }
     resetPathTraceAccumulation();
     update();
 }
@@ -1164,6 +1210,36 @@ void GLPreviewWidget::updateSelectionFromClick(const QPoint& screenPosition)
 bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
 {
     const tinyray::Ray ray = tinyray::makePickingRay(screenPosition, size(), camera_);
+    const int lightIndex = pickLight(ray);
+    if (lightIndex >= 0) {
+        tinyray::Vec3 lightCenter = scene_.lights[static_cast<std::size_t>(lightIndex)].position;
+        dragStartObjectCenter_ = lightCenter;
+        tinyray::Vec3 dragPoint;
+        if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
+            || objectDragMode_ == tinyray::ObjectDragMode::AxisY
+            || objectDragMode_ == tinyray::ObjectDragMode::AxisZ) {
+            dragPoint = lightCenter;
+        } else if (!rayIntersectsDragPlane(ray, dragPoint)) {
+            dragPoint = lightCenter;
+        }
+
+        selectedObjectId_ = -1;
+        selectedLightIndex_ = lightIndex;
+        draggedObjectId_ = -1;
+        draggedLightIndex_ = lightIndex;
+        isDraggingObject_ = false;
+        isDraggingLight_ = true;
+        scene_.selectedObjectId = -1;
+        dragStartGroundPoint_ = dragPoint;
+        dragOffset_ = dragStartObjectCenter_ - dragStartGroundPoint_;
+
+        emit lightSelected(lightIndex);
+        emit interactionStatusChanged(QStringLiteral("Light dragging"));
+        resetPathTraceAccumulation();
+        update();
+        return true;
+    }
+
     tinyray::HitRecord record;
     if (!scene_.intersect(ray, 0.001, tinyray::infinity, record)) {
         return false;
@@ -1174,6 +1250,7 @@ bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
         return false;
     }
 
+    dragStartObjectCenter_ = objectCenter;
     tinyray::Vec3 groundPoint;
     if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
         || objectDragMode_ == tinyray::ObjectDragMode::AxisY
@@ -1184,10 +1261,10 @@ bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
     }
 
     selectedObjectId_ = record.hitObjectId;
+    selectedLightIndex_ = -1;
     scene_.selectedObjectId = selectedObjectId_;
     draggedObjectId_ = selectedObjectId_;
     isDraggingObject_ = true;
-    dragStartObjectCenter_ = objectCenter;
     dragStartGroundPoint_ = groundPoint;
     dragOffset_ = dragStartObjectCenter_ - dragStartGroundPoint_;
 
@@ -1200,6 +1277,38 @@ bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
 
 void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
 {
+    if (isDraggingLight_) {
+        if (draggedLightIndex_ < 0 || draggedLightIndex_ >= static_cast<int>(scene_.lights.size())) {
+            finishObjectDrag();
+            return;
+        }
+
+        tinyray::Vec3 newCenter;
+        if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
+            || objectDragMode_ == tinyray::ObjectDragMode::AxisY
+            || objectDragMode_ == tinyray::ObjectDragMode::AxisZ) {
+            newCenter = axisDragCenter(screenPosition);
+        } else {
+            tinyray::Vec3 groundPoint;
+            const tinyray::Ray ray = tinyray::makePickingRay(screenPosition, size(), camera_);
+            if (!rayIntersectsDragPlane(ray, groundPoint)) {
+                return;
+            }
+            newCenter = groundPoint + dragOffset_;
+        }
+
+        scene_.lights[static_cast<std::size_t>(draggedLightIndex_)].position = newCenter;
+        selectedObjectId_ = -1;
+        selectedLightIndex_ = draggedLightIndex_;
+        scene_.selectedObjectId = -1;
+
+        emit lightMoved(draggedLightIndex_, newCenter.x, newCenter.y, newCenter.z);
+        emit interactionStatusChanged(QStringLiteral("Light dragging"));
+        resetPathTraceAccumulation();
+        update();
+        return;
+    }
+
     if (!isDraggingObject_) {
         return;
     }
@@ -1239,7 +1348,39 @@ void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
 void GLPreviewWidget::finishObjectDrag()
 {
     isDraggingObject_ = false;
+    isDraggingLight_ = false;
     draggedObjectId_ = -1;
+    draggedLightIndex_ = -1;
+}
+
+int GLPreviewWidget::pickLight(const tinyray::Ray& ray) const
+{
+    int bestIndex = -1;
+    double bestT = tinyray::infinity;
+    constexpr double markerRadius = 0.28;
+
+    for (int index = 0; index < static_cast<int>(scene_.lights.size()); ++index) {
+        const tinyray::Vec3 oc = ray.origin - scene_.lights[static_cast<std::size_t>(index)].position;
+        const double a = dot(ray.direction, ray.direction);
+        const double halfB = dot(oc, ray.direction);
+        const double c = dot(oc, oc) - markerRadius * markerRadius;
+        const double discriminant = halfB * halfB - a * c;
+        if (discriminant < 0.0) {
+            continue;
+        }
+
+        const double root = std::sqrt(discriminant);
+        double t = (-halfB - root) / a;
+        if (t <= 0.001) {
+            t = (-halfB + root) / a;
+        }
+        if (t > 0.001 && t < bestT) {
+            bestT = t;
+            bestIndex = index;
+        }
+    }
+
+    return bestIndex;
 }
 
 bool GLPreviewWidget::draggableObjectCenter(int objectId, tinyray::Vec3& center) const

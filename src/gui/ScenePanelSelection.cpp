@@ -40,3 +40,32 @@ void ScenePanel::setSelectedObjectId(int objectId)
     objectList_->clearSelection();
     loadSelectedEditor();
 }
+
+void ScenePanel::setSelectedLightIndex(int lightIndex)
+{
+    if (objectList_ == nullptr) {
+        return;
+    }
+
+    if (lightIndex < 0 || lightIndex >= static_cast<int>(scene_.lights.size())) {
+        objectList_->clearSelection();
+        loadSelectedEditor();
+        return;
+    }
+
+    for (int row = 0; row < objectList_->count(); ++row) {
+        QListWidgetItem* item = objectList_->item(row);
+        if (item == nullptr || item->data(Qt::UserRole).toString() != QStringLiteral("light")) {
+            continue;
+        }
+
+        if (item->data(Qt::UserRole + 1).toInt() == lightIndex) {
+            objectList_->setCurrentRow(row);
+            loadSelectedEditor();
+            return;
+        }
+    }
+
+    objectList_->clearSelection();
+    loadSelectedEditor();
+}

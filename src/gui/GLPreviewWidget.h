@@ -33,7 +33,9 @@ public:
 
 signals:
     void objectSelected(int objectId);
+    void lightSelected(int lightIndex);
     void objectMoved(int objectId, double x, double y, double z);
+    void lightMoved(int lightIndex, double x, double y, double z);
     void interactionStatusChanged(const QString& status);
 
 protected:
@@ -63,18 +65,20 @@ private:
     void renderPathTracedScene();
     void uploadPathTraceScene(QOpenGLShaderProgram& program);
     void drawFullScreenTriangle(QOpenGLShaderProgram& program);
+    void drawLightMarkersOverlay();
     void drawScene();
     void drawBox(const tinyray::Box& box);
     void drawCylinder(const tinyray::Cylinder& cylinder);
     void drawSphere(const tinyray::Sphere& sphere);
     void drawPlane(const tinyray::Plane& plane);
-    void drawLightMarker(const tinyray::Light& light);
+    void drawLightMarker(const tinyray::Light& light, bool selected);
     void applyMaterial(const tinyray::Material& material, bool selected);
     bool isSelectionClick(const QPoint& releasePosition) const;
     void updateSelectionFromClick(const QPoint& screenPosition);
     bool beginObjectDrag(const QPoint& screenPosition);
     void updateObjectDrag(const QPoint& screenPosition);
     void finishObjectDrag();
+    int pickLight(const tinyray::Ray& ray) const;
     bool draggableObjectCenter(int objectId, tinyray::Vec3& center) const;
     bool setDraggableObjectCenter(int objectId, const tinyray::Vec3& center);
     bool rayIntersectsDragPlane(const tinyray::Ray& ray, tinyray::Vec3& hitPoint) const;
@@ -92,8 +96,11 @@ private:
     QPoint pressMousePosition_;
     QPoint lastMousePosition_;
     int selectedObjectId_ = -1;
+    int selectedLightIndex_ = -1;
     int draggedObjectId_ = -1;
+    int draggedLightIndex_ = -1;
     bool isDraggingObject_ = false;
+    bool isDraggingLight_ = false;
     tinyray::Vec3 dragStartObjectCenter_;
     tinyray::Vec3 dragStartGroundPoint_;
     tinyray::Vec3 dragOffset_;

@@ -20,6 +20,7 @@ public:
 
     void setScene(const tinyray::Scene& scene);
     void setSelectedObjectId(int objectId);
+    void setSelectedLightIndex(int lightIndex);
     tinyray::Scene scene() const;
 
 signals:

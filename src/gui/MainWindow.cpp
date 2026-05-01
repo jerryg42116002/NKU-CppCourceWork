@@ -1,6 +1,7 @@
 #include "gui/MainWindow.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <system_error>
 
 #include <QAction>
@@ -43,8 +44,12 @@ MainWindow::MainWindow(QWidget* parent)
     realTimeRenderWidget_->setScene(scene_);
     connect(realTimeRenderWidget_, &RealTimeRenderWidget::objectSelected,
             this, &MainWindow::handleRealTimeObjectSelected);
+    connect(realTimeRenderWidget_, &RealTimeRenderWidget::lightSelected,
+            this, &MainWindow::handleRealTimeLightSelected);
     connect(realTimeRenderWidget_, &RealTimeRenderWidget::objectMoved,
             this, &MainWindow::handleRealTimeObjectMoved);
+    connect(realTimeRenderWidget_, &RealTimeRenderWidget::lightMoved,
+            this, &MainWindow::handleRealTimeLightMoved);
     setCentralWidget(realTimeRenderWidget_);
 
     createMenus();
@@ -415,6 +420,7 @@ void MainWindow::handleLoadScene()
     scenePanel_->setScene(scene_);
     scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
     realTimeRenderWidget_->setScene(scene_);
+    realTimeRenderWidget_->setSelectedObjectId(scene_.selectedObjectId);
     applyRenderSettings(loadedSettings);
     highQualityImage_ = QImage();
     progressBar_->setValue(0);
@@ -462,6 +468,18 @@ void MainWindow::handleRealTimeObjectSelected(int objectId)
     statusLabel_->setText(QStringLiteral("Real-time rendering | Selected %1").arg(scene_.objectLabel(objectId)));
 }
 
+void MainWindow::handleRealTimeLightSelected(int lightIndex)
+{
+    scene_.selectedObjectId = -1;
+    scenePanel_->setSelectedLightIndex(lightIndex);
+    if (lightIndex < 0 || lightIndex >= static_cast<int>(scene_.lights.size())) {
+        statusLabel_->setText(QStringLiteral("Real-time rendering"));
+        return;
+    }
+
+    statusLabel_->setText(QStringLiteral("Real-time rendering | Selected Point Light %1").arg(lightIndex + 1));
+}
+
 void MainWindow::handleRealTimeObjectMoved(int objectId, double x, double y, double z)
 {
     tinyray::Object* object = scene_.objectById(objectId);
@@ -485,6 +503,20 @@ void MainWindow::handleRealTimeObjectMoved(int objectId, double x, double y, dou
     scenePanel_->setScene(scene_);
     scenePanel_->setSelectedObjectId(objectId);
     statusLabel_->setText(QStringLiteral("Object dragging | %1").arg(scene_.objectLabel(objectId)));
+}
+
+void MainWindow::handleRealTimeLightMoved(int lightIndex, double x, double y, double z)
+{
+    if (lightIndex < 0 || lightIndex >= static_cast<int>(scene_.lights.size())) {
+        return;
+    }
+
+    scene_.lights[static_cast<std::size_t>(lightIndex)].position = tinyray::Vec3(x, y, z);
+    scene_.selectedObjectId = -1;
+    highQualityImage_ = QImage();
+    scenePanel_->setScene(scene_);
+    scenePanel_->setSelectedLightIndex(lightIndex);
+    statusLabel_->setText(QStringLiteral("Light dragging | Point Light %1").arg(lightIndex + 1));
 }
 
 void MainWindow::updateRenderProgress(int progress)
