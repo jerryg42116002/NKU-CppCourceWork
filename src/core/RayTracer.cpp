@@ -23,6 +23,14 @@ double schlickReflectance(double cosine, double refractiveIndex)
     return r0 + (1.0 - r0) * std::pow(1.0 - cosine, 5.0);
 }
 
+double pseudoRandom01(int sampleIndex, double salt, const Vec3& point)
+{
+    const double seed = point.x * 12.9898 + point.y * 78.233 + point.z * 37.719
+        + static_cast<double>(sampleIndex) * 19.19 + salt;
+    const double value = std::sin(seed) * 43758.5453123;
+    return value - std::floor(value);
+}
+
 } // namespace
 
 Vec3 RayTracer::trace(const Ray& ray, const Scene& scene, int maxDepth)
@@ -47,6 +55,8 @@ Vec3 RayTracer::rayColor(const Ray& ray, const Scene& scene, int depth)
     }
 
     switch (material->type) {
+    case MaterialType::Emissive:
+        return material->emittedRadiance();
     case MaterialType::Glass:
         return shadeGlass(ray, record, scene, depth);
     case MaterialType::Metal:
@@ -75,22 +85,68 @@ Vec3 RayTracer::shadeDiffuse(const HitRecord& record, const Scene& scene) const
     Vec3 color = ambientLight_ * albedo;
 
     for (const Light& light : scene.lights) {
-        if (light.type != LightType::Point) {
+        if (light.type == LightType::Point) {
+            if (isInShadow(record.point, record.normal, light, scene)) {
+                continue;
+            }
+
+            const Vec3 toLight = light.position - record.point;
+            const double distanceSquared = std::max(toLight.lengthSquared(), shadowEpsilon_);
+            const Vec3 lightDirection = toLight.normalized();
+            const double lambert = std::max(0.0, dot(record.normal, lightDirection));
+
+            // Simple inverse-square attenuation keeps point lights physically plausible.
+            const double attenuation = light.intensity / distanceSquared;
+            color += albedo * light.color * (lambert * attenuation);
             continue;
         }
 
-        if (isInShadow(record.point, record.normal, light, scene)) {
-            continue;
+        if (light.type == LightType::Area) {
+            const int requestedSamples = scene.softShadowsEnabled ? scene.areaLightSamples : 1;
+            const int sampleCount = std::clamp(requestedSamples, 1, 128);
+            Vec3 contribution(0.0, 0.0, 0.0);
+
+            for (int sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+                const double u = scene.softShadowsEnabled
+                    ? pseudoRandom01(sampleIndex, 3.17, record.point)
+                    : 0.5;
+                const double v = scene.softShadowsEnabled
+                    ? pseudoRandom01(sampleIndex, 9.73, record.point)
+                    : 0.5;
+                const Vec3 lightPoint = light.sampleArea(u, v);
+                const Vec3 toLight = lightPoint - record.point;
+                const double lightDistance = toLight.length();
+                if (lightDistance <= shadowEpsilon_) {
+                    continue;
+                }
+
+                const Vec3 lightDirection = toLight / lightDistance;
+                const double lambert = std::max(0.0, dot(record.normal, lightDirection));
+                if (lambert <= 0.0) {
+                    continue;
+                }
+
+                const double lightFacing = std::max(0.0, dot(light.safeNormal(), -lightDirection));
+                if (lightFacing <= 0.0) {
+                    continue;
+                }
+
+                const Vec3 shadowOrigin = record.point + record.normal * shadowEpsilon_;
+                const Ray shadowRay(shadowOrigin, lightDirection);
+                HitRecord shadowRecord;
+                const bool occluded = scene.intersect(
+                    shadowRay, shadowEpsilon_, lightDistance - shadowEpsilon_, shadowRecord);
+                if (occluded) {
+                    continue;
+                }
+
+                const double distanceSquared = std::max(lightDistance * lightDistance, shadowEpsilon_);
+                const double attenuation = light.intensity * lightFacing / distanceSquared;
+                contribution += albedo * light.color * (lambert * attenuation);
+            }
+
+            color += contribution / static_cast<double>(sampleCount);
         }
-
-        const Vec3 toLight = light.position - record.point;
-        const double distanceSquared = std::max(toLight.lengthSquared(), shadowEpsilon_);
-        const Vec3 lightDirection = toLight.normalized();
-        const double lambert = std::max(0.0, dot(record.normal, lightDirection));
-
-        // Simple inverse-square attenuation keeps point lights physically plausible.
-        const double attenuation = light.intensity / distanceSquared;
-        color += albedo * light.color * (lambert * attenuation);
     }
 
     return clamp(color, 0.0, 1.0);

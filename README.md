@@ -1,119 +1,199 @@
 # TinyRay Studio
 
-TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + CMake** 的 CPU 光线追踪渲染器 GUI 项目。
+TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + CMake** 的计算机图形学桌面工具。项目采用“单一实时渲染视口 + 可选 CPU Ray Tracing 高质量渲染”的混合架构：中央视口用于即时观察、选择、拖动物体和光源；CPU 光线追踪用于生成最终高质量图片。
 
-项目定位是计算机图形学工具，不是游戏。用户可以在 Qt 桌面窗口中设置渲染参数，点击 Render 后由 CPU 光线追踪器生成图像，并在中央预览区域显示结果。
+它不是游戏，而是一个用于展示和实验基础图形学算法的小型图形工具。
 
 ## 当前功能
 
-- Qt Widgets 主窗口
-- 中央 `RenderWidget` 渲染预览区
-- 右侧 Render Settings 参数面板
-- 底部状态栏和渲染进度条
-- Render、Stop、Save Image、Clear 按钮
-- File / Render / Help 菜单栏
-- Save Scene / Load Scene JSON 场景保存加载
-- 右侧 Scene Panel 对象列表和属性编辑器
-- 内置预设场景：Reflection Demo、Glass Demo、Colored Lights Demo
-- OpenGL 实时预览页，用于快速查看场景和动态视角控制
-- CPU Ray Tracing 最终渲染页，用于高质量输出
-- 使用 `QImage` 显示和保存 PNG
-- 基础数学模块：`Vec3`、`Ray`、`Camera`、随机数和数学工具
-- 基础场景模块：`Object`、`HitRecord`、`Sphere`、`Plane`、`Light`、`Scene`
-- 默认场景：地面、三个球体、一个点光源
-- CPU Ray Tracing 基础渲染：
-  - 相机发射射线
-  - 球体和平面求交
-  - Diffuse 材质 albedo
-  - 环境光
+- Qt 6 Widgets 主窗口和右侧参数面板
+- 中央实时渲染视口 `RealTimeRenderWidget`
+- OpenGL / GLSL 实时渲染当前场景
+- Orbit Camera 视角控制：
+  - 左键拖动空白区域旋转视角
+  - 右键拖动平移视角
+  - 鼠标滚轮缩放
+- 场景对象点击选中
+- Sphere / Box / Cylinder / Point Light / Area Light 拖拽移动
+- 拖拽轴模式切换
+- Scene Panel 对象列表和 Inspector 属性编辑
+- 支持对象：
+  - Sphere
+  - Plane
+  - Box
+  - Cylinder
+- 支持光源：
+  - Point Light 点光源
+  - Area Light 矩形面光源
+- 支持材质：
+  - Diffuse 漫反射
+  - Metal 金属反射
+  - Glass / Dielectric 玻璃折射
+  - Emissive 自发光材质
+- 后处理：
+  - Bloom 泛光
+  - Exposure 曝光控制
+- CPU Ray Tracing 高质量渲染：
+  - 相机射线生成
+  - Sphere / Plane / Box / Cylinder 求交
+  - Point Light 硬阴影
+  - Area Light 多采样软阴影
   - Lambert 漫反射
-  - 点光源直接光照
-  - 阴影射线
-  - epsilon 偏移减少 shadow acne
-  - Metal 金属反射材质
-  - roughness 控制模糊反射
-  - Glass / Dielectric 折射材质
-  - Snell's Law 折射和全反射
-  - Schlick 近似反射概率
-  - samples per pixel 多采样平均
-  - gamma 2.2 校正
-  - max depth 控制递归深度
-  - 多线程 CPU 渲染
-  - Progressive Rendering 渐进式预览
-  - Orbit Camera 实时视角旋转、平移和缩放
+  - Metal 递归反射
+  - Glass 折射、全反射和 Schlick 近似
+  - Emissive 自发光命中
+  - 多重采样抗锯齿
+  - gamma correction
+  - 多线程渲染
+  - 渐进式图像更新
+  - Stop 取消渲染
+- PNG 图片导出
+- JSON 场景保存和加载
+- `--self-test` 非 GUI 自检入口
 
 ## 环境要求
 
-- CMake 3.21 或更新版本
-- Qt 6 Widgets
+- Windows
+- Visual Studio 2022 或 Visual Studio Build Tools
+- CMake 3.21+
+- Qt 6 MSVC 2022 64-bit Kit
 - 支持 C++17 的编译器
 
-项目只使用 Qt Widgets 和标准 C++。不使用 OpenGL、CUDA、Vulkan、DirectX、Web 前端或游戏引擎。
+项目使用 Qt Widgets、QOpenGLWidget、OpenGL 和标准 C++。不使用 CUDA、OptiX、Vulkan、DirectX、Qt WebEngine 或游戏引擎。
 
 ## 构建方法
 
-Windows 下如果使用 Qt 官方安装器，可以按类似下面的方式指定 Qt 6 路径：
+进入项目根目录：
 
 ```powershell
-cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.6.0/msvc2019_64"
-cmake --build build
+cd D:\NKUcpp大作业
 ```
 
-请根据本机安装的 Qt 6 Kit 修改 `CMAKE_PREFIX_PATH`。
-
-如果 Qt 6 已经加入系统环境变量，也可以直接执行：
+配置 CMake：
 
 ```powershell
-cmake -S . -B build
-cmake --build build
+cmake -S . -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.11.0\msvc2022_64"
 ```
+
+构建 Release：
+
+```powershell
+cmake --build build --config Release
+```
+
+如果你的 Qt 安装路径不同，请把 `CMAKE_PREFIX_PATH` 改成自己的 Qt Kit 路径。
+
+## 部署 Qt DLL
+
+如果双击运行时提示缺少 Qt DLL，可以执行：
+
+```powershell
+C:\Qt\6.11.0\msvc2022_64\bin\windeployqt.exe D:\NKUcpp大作业\build\Release\TinyRayStudio.exe
+```
+
+如果看到 `dxcompiler.dll` 或 `VCINSTALLDIR` 相关 warning，一般可以先忽略；TinyRay Studio 不依赖 DirectX 渲染管线。
+
+## 使用方法
+
+1. 启动 `TinyRayStudio.exe`。
+2. 在中央实时视口中观察当前场景。
+3. 使用鼠标控制视角：
+   - 左键拖动空白区域旋转
+   - 右键拖动平移
+   - 滚轮缩放
+4. 点击对象或光源进行选中。
+5. 拖动物体、点光源或面光源，实时查看场景变化。
+6. 在右侧 Inspector 中修改对象位置、尺寸、材质、光源和后处理参数。
+7. 点击 `High Quality Render` 使用 CPU Ray Tracing 生成最终图片。
+8. 点击 `Save Image` 导出 PNG。
+9. 使用 `Save Scene` / `Load Scene` 保存和加载 JSON 场景。
+
+更完整的操作说明见 [USER_GUIDE.md](USER_GUIDE.md)。
+
+## Emissive 发光材质
+
+Emissive 是材质层面的自发光。它不依赖 Point Light 或 Area Light，也能在实时视口和 CPU 渲染结果中可见。
+
+Inspector 中可以设置：
+
+- `Material = Emissive`
+- `Emission Color`：发光颜色
+- `Emission Strength`：发光强度
+
+当前 Emissive 物体会自己发亮，并能触发实时 Bloom；它仍然和 Area Light 是两个不同概念。
+
+## Area Light 与 Soft Shadows
+
+Area Light 是显式光源对象，当前实现为矩形面光源。它包含：
+
+- `position`：中心位置
+- `normal`：朝向
+- `width`
+- `height`
+- `color`
+- `intensity`
+
+CPU Ray Tracing 中，Area Light 会对矩形表面进行多点采样，从 shading point 向采样点发射 shadow ray，统计可见样本贡献并平均，从而产生软阴影。Point Light 仍保留原有硬阴影路径。
+
+实时视口中，Area Light 会显示为可见的发光矩形，支持选中和拖拽；实时视口目前主要用于快速交互，不强制计算真实软阴影。软阴影效果主要在 `High Quality Render` 的 CPU 渲染结果中体现。
+
+## Bloom 泛光
+
+实时视口支持 Bloom 后处理：
+
+- 提取亮部区域
+- 对亮部做水平/垂直模糊
+- 与原场景合成
+- 使用 Exposure 控制最终显示亮度
+
+右侧 `Post Processing` 面板可调节：
+
+- Bloom 开关
+- Exposure
+- Threshold
+- Strength
+- Blur Passes
+
+如果已经生成 CPU 高质量渲染结果，`Save Image` 优先保存 CPU 图像；否则保存当前实时视口截图，截图包含当前 Bloom 效果。
 
 ## 项目结构
 
 ```text
 src/
-  core/   数学、射线、相机、材质、几何体、场景、光照和渲染器
-  gui/    Qt Widgets 界面代码
+  core/          数学、射线、相机、材质、光源、几何体、场景、序列化、CPU 渲染
+  gui/           Qt Widgets 界面、实时渲染视口、场景面板
+  interaction/   picking、鼠标交互辅助逻辑
+  preview/       OpenGL 后处理与 Bloom
 ```
-
-核心渲染逻辑与 GUI 分离，便于后续继续扩展材质、递归反射、折射、抗锯齿、多线程和渐进式渲染。
-
-## 使用方法
-
-更完整的操作说明见 [USER_GUIDE.md](USER_GUIDE.md)。
-
-1. 启动程序。
-2. 在右侧面板设置分辨率、samples per pixel、max depth 和线程数。
-3. 在 Presets 中选择内置预设，或在 Scene 面板中添加、删除和编辑 Sphere、Plane、Point Light。
-4. 点击 `Render` 开始渲染当前场景。
-5. 渲染过程中可以看到渐进式预览，也可以点击 `Stop` 保留当前半成品图像。
-6. 点击 `Save Image` 可以选择路径导出 PNG。
-7. 通过菜单或按钮可以 `Save Scene` / `Load Scene` 保存和加载 JSON 场景。
-8. 点击 `Clear` 可以清空当前预览。
 
 ## 图形学技术点
 
-- CPU ray tracing
-- Ray generation from perspective camera
-- Ray-sphere intersection
-- Ray-plane intersection
-- Front-face normal handling
-- Lambert diffuse lighting
-- Point light shadow ray
-- Shadow acne epsilon offset
-- Recursive metal reflection
-- Glass refraction using Snell's Law
-- Total internal reflection
-- Schlick reflectance approximation
-- Random subpixel sampling
-- Gamma correction
-- Multi-threaded row rendering
-- Progressive preview
+- Ray Tracing 基础框架
+- 射线与 Sphere / Plane / Box / Cylinder 求交
+- 法线和 front-face 判断
+- Point Light 硬阴影
+- Area Light 多采样软阴影
+- shadow ray 和 epsilon 偏移
+- Lambert 漫反射
+- Metal 递归反射
+- Glass 折射、全反射、Schlick 近似
+- Emissive 自发光材质
+- Bloom 泛光后处理
+- Exposure 色调控制
+- 随机子像素采样
+- gamma correction
+- 多线程 CPU 渲染
+- 渐进式预览
+- OpenGL / GLSL 实时渲染视口
+- Orbit Camera
+- 鼠标 picking
+- 对象和光源拖拽
 
 ## 后续计划
 
-- 递归路径追踪
-- 更完整的材质编辑
-- 相机 GUI 编辑
-- 场景文件版本兼容
-- 更精致的 UI 主题
+- 实时视口近似软阴影
+- Area Light 旋转交互手柄
+- 更低噪声的分层采样 / 蓝噪声采样
+- Emissive 参与真实间接照明
+- 更高级的色调映射和曝光控制
+- 更完整的材质与灯光预设

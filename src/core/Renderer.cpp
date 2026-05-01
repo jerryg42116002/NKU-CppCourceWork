@@ -11,6 +11,7 @@
 
 #include <QColor>
 
+#include "core/ImagePostProcess.h"
 #include "core/Random.h"
 #include "core/RayTracer.h"
 
@@ -39,12 +40,13 @@ double gammaCorrect(double linearValue)
     return std::pow(clamped, inverseGamma);
 }
 
-Vec3 toDisplayColor(const Vec3& linearColor)
+Vec3 toDisplayColor(const Vec3& linearColor, double exposure)
 {
-    return Vec3(
-        gammaCorrect(linearColor.x),
-        gammaCorrect(linearColor.y),
-        gammaCorrect(linearColor.z));
+    const Vec3 toneMapped(
+        1.0 - std::exp(-std::max(linearColor.x, 0.0) * exposure),
+        1.0 - std::exp(-std::max(linearColor.y, 0.0) * exposure),
+        1.0 - std::exp(-std::max(linearColor.z, 0.0) * exposure));
+    return Vec3(gammaCorrect(toneMapped.x), gammaCorrect(toneMapped.y), gammaCorrect(toneMapped.z));
 }
 
 } // namespace
@@ -60,6 +62,7 @@ QImage Renderer::render(const Scene& scene, const RenderSettings& settings,
     const int requestedThreads = settings.threadCount > 0 ? settings.threadCount : defaultThreadCount();
     const int workerCount = std::clamp(requestedThreads, 1, height);
     const int totalRowSamples = height * samplesPerPixel;
+    const double exposure = scene.bloomSettings.safeExposure();
 
     Camera camera = scene.camera;
     camera.aspectRatio = static_cast<double>(width) / static_cast<double>(height);
@@ -139,7 +142,7 @@ QImage Renderer::render(const Scene& scene, const RenderSettings& settings,
 
             const Vec3 averageColor =
                 accumulatedColors[static_cast<std::size_t>(pixelIndex)] / static_cast<double>(sampleIndex + 1);
-            const Vec3 displayColor = toDisplayColor(averageColor);
+            const Vec3 displayColor = toDisplayColor(averageColor, exposure);
             rowPixels[static_cast<std::size_t>(x)] =
                 qRgb(toByte(displayColor.x), toByte(displayColor.y), toByte(displayColor.z));
         }
@@ -203,6 +206,10 @@ QImage Renderer::render(const Scene& scene, const RenderSettings& settings,
     }
 
     if (!stopRequested()) {
+        {
+            std::lock_guard<std::mutex> imageLock(imageMutex);
+            image = ImagePostProcess::applyBloom(image, scene.bloomSettings);
+        }
         reportProgress(100);
         publishPreview(samplesPerPixel, 100, true);
     } else {

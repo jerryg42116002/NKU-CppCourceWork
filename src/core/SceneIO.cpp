@@ -38,6 +38,8 @@ QString materialTypeToString(MaterialType type)
         return "Metal";
     case MaterialType::Glass:
         return "Glass";
+    case MaterialType::Emissive:
+        return "Emissive";
     case MaterialType::Diffuse:
     default:
         return "Diffuse";
@@ -46,11 +48,14 @@ QString materialTypeToString(MaterialType type)
 
 MaterialType materialTypeFromString(const QString& value)
 {
-    if (value == "Metal") {
+    if (value.compare(QStringLiteral("Metal"), Qt::CaseInsensitive) == 0) {
         return MaterialType::Metal;
     }
-    if (value == "Glass") {
+    if (value.compare(QStringLiteral("Glass"), Qt::CaseInsensitive) == 0) {
         return MaterialType::Glass;
+    }
+    if (value.compare(QStringLiteral("Emissive"), Qt::CaseInsensitive) == 0) {
+        return MaterialType::Emissive;
     }
     return MaterialType::Diffuse;
 }
@@ -62,6 +67,10 @@ QJsonObject materialToJson(const Material& material)
     object["albedo"] = vecToJson(material.albedo);
     object["roughness"] = material.roughness;
     object["refractiveIndex"] = material.refractiveIndex;
+    object["emissionColor"] = vecToJson(material.emissionColor);
+    object["emissionStrength"] = material.emissionStrength;
+    object["emissiveColor"] = vecToJson(material.emissionColor);
+    object["emissiveIntensity"] = material.emissionStrength;
     return object;
 }
 
@@ -72,6 +81,13 @@ Material materialFromJson(const QJsonObject& object)
     material.albedo = vecFromJson(object.value("albedo").toObject(), material.albedo);
     material.roughness = object.value("roughness").toDouble(material.roughness);
     material.refractiveIndex = object.value("refractiveIndex").toDouble(material.refractiveIndex);
+    const QJsonObject emissionColorObject = object.contains("emissiveColor")
+        ? object.value("emissiveColor").toObject()
+        : object.value("emissionColor").toObject();
+    material.emissionColor = vecFromJson(emissionColorObject, material.emissionColor);
+    material.emissionStrength = object.contains("emissiveIntensity")
+        ? object.value("emissiveIntensity").toDouble(material.emissionStrength)
+        : object.value("emissionStrength").toDouble(material.emissionStrength);
     return material;
 }
 
@@ -107,6 +123,16 @@ bool SceneIO::saveToFile(const Scene& scene,
     camera["aspectRatio"] = scene.camera.aspectRatio;
     root["camera"] = camera;
     root["selectedObjectId"] = scene.selectedObjectId;
+    root["softShadowsEnabled"] = scene.softShadowsEnabled;
+    root["areaLightSamples"] = scene.areaLightSamples;
+
+    QJsonObject bloom;
+    bloom["enabled"] = scene.bloomSettings.enabled;
+    bloom["exposure"] = scene.bloomSettings.exposure;
+    bloom["threshold"] = scene.bloomSettings.threshold;
+    bloom["strength"] = scene.bloomSettings.strength;
+    bloom["blurPassCount"] = scene.bloomSettings.blurPassCount;
+    root["bloom"] = bloom;
 
     QJsonObject renderSettings;
     renderSettings["width"] = settings.width;
@@ -158,8 +184,11 @@ bool SceneIO::saveToFile(const Scene& scene,
     QJsonArray lights;
     for (const Light& light : scene.lights) {
         QJsonObject item;
-        item["type"] = "PointLight";
+        item["type"] = light.type == LightType::Area ? "AreaLight" : "PointLight";
         item["position"] = vecToJson(light.position);
+        item["normal"] = vecToJson(light.normal);
+        item["width"] = light.width;
+        item["height"] = light.height;
         item["color"] = vecToJson(light.color);
         item["intensity"] = light.intensity;
         lights.append(item);
@@ -202,6 +231,15 @@ bool SceneIO::loadFromFile(const QString& fileName,
     loadedScene.camera.fieldOfViewYDegrees = camera.value("fov").toDouble(loadedScene.camera.fieldOfViewYDegrees);
     loadedScene.camera.aspectRatio = camera.value("aspectRatio").toDouble(loadedScene.camera.aspectRatio);
     loadedScene.selectedObjectId = root.value("selectedObjectId").toInt(-1);
+    loadedScene.softShadowsEnabled = root.value("softShadowsEnabled").toBool(loadedScene.softShadowsEnabled);
+    loadedScene.areaLightSamples = root.value("areaLightSamples").toInt(loadedScene.areaLightSamples);
+
+    const QJsonObject bloom = root.value("bloom").toObject();
+    loadedScene.bloomSettings.enabled = bloom.value("enabled").toBool(loadedScene.bloomSettings.enabled);
+    loadedScene.bloomSettings.exposure = bloom.value("exposure").toDouble(loadedScene.bloomSettings.exposure);
+    loadedScene.bloomSettings.threshold = bloom.value("threshold").toDouble(loadedScene.bloomSettings.threshold);
+    loadedScene.bloomSettings.strength = bloom.value("strength").toDouble(loadedScene.bloomSettings.strength);
+    loadedScene.bloomSettings.blurPassCount = bloom.value("blurPassCount").toInt(loadedScene.bloomSettings.blurPassCount);
 
     const QJsonObject renderSettings = root.value("renderSettings").toObject();
     settings.width = renderSettings.value("width").toInt(settings.width);
@@ -251,10 +289,21 @@ bool SceneIO::loadFromFile(const QString& fileName,
     const QJsonArray lights = root.value("lights").toArray();
     for (const QJsonValue& value : lights) {
         const QJsonObject item = value.toObject();
-        loadedScene.addLight(Light(
-            vecFromJson(item.value("position").toObject(), Vec3(0.0, 4.0, 2.0)),
-            vecFromJson(item.value("color").toObject(), Vec3(1.0, 1.0, 1.0)),
-            item.value("intensity").toDouble(1.0)));
+        const QString type = item.value("type").toString("PointLight");
+        if (type == "AreaLight") {
+            loadedScene.addLight(Light::area(
+                vecFromJson(item.value("position").toObject(), Vec3(0.0, 4.0, 2.0)),
+                vecFromJson(item.value("normal").toObject(), Vec3(0.0, -1.0, 0.0)),
+                item.value("width").toDouble(2.0),
+                item.value("height").toDouble(2.0),
+                vecFromJson(item.value("color").toObject(), Vec3(1.0, 1.0, 1.0)),
+                item.value("intensity").toDouble(1.0)));
+        } else {
+            loadedScene.addLight(Light(
+                vecFromJson(item.value("position").toObject(), Vec3(0.0, 4.0, 2.0)),
+                vecFromJson(item.value("color").toObject(), Vec3(1.0, 1.0, 1.0)),
+                item.value("intensity").toDouble(1.0)));
+        }
     }
 
     scene = loadedScene;

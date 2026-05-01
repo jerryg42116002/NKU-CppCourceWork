@@ -6,6 +6,7 @@
 
 #include <QString>
 
+#include "core/BloomSettings.h"
 #include "core/Camera.h"
 #include "core/Box.h"
 #include "core/Cylinder.h"
@@ -79,6 +80,9 @@ public:
     static Scene createColoredLightsDemo();
 
     Camera camera;
+    BloomSettings bloomSettings;
+    bool softShadowsEnabled = true;
+    int areaLightSamples = 16;
     int selectedObjectId = -1;
     std::vector<std::shared_ptr<Object>> objects;
     std::vector<Light> lights;

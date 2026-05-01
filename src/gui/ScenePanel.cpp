@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include <QColorDialog>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -13,6 +14,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -39,6 +41,8 @@ QColor vec3ToColor(const tinyray::Vec3& color)
 int materialTypeToIndex(tinyray::MaterialType type)
 {
     switch (type) {
+    case tinyray::MaterialType::Emissive:
+        return 3;
     case tinyray::MaterialType::Metal:
         return 1;
     case tinyray::MaterialType::Glass:
@@ -57,12 +61,17 @@ tinyray::MaterialType materialTypeFromIndex(int index)
     if (index == 2) {
         return tinyray::MaterialType::Glass;
     }
+    if (index == 3) {
+        return tinyray::MaterialType::Emissive;
+    }
     return tinyray::MaterialType::Diffuse;
 }
 
 QString materialName(tinyray::MaterialType type)
 {
     switch (type) {
+    case tinyray::MaterialType::Emissive:
+        return QStringLiteral("Emissive");
     case tinyray::MaterialType::Metal:
         return QStringLiteral("Metal");
     case tinyray::MaterialType::Glass:
@@ -94,6 +103,7 @@ void ScenePanel::setScene(const tinyray::Scene& scene)
 {
     updating_ = true;
     scene_ = scene;
+    syncBloomControls();
     rebuildObjectList();
     updating_ = false;
     loadSelectedEditor();
@@ -119,6 +129,32 @@ void ScenePanel::createUi()
     presetLayout->addWidget(presetComboBox_);
     layout->addWidget(presetGroup);
 
+    auto* postProcessGroup = new QGroupBox(QStringLiteral("Post Processing"), this);
+    auto* postProcessLayout = new QFormLayout(postProcessGroup);
+    bloomEnabled_ = new QCheckBox(QStringLiteral("Bloom"), postProcessGroup);
+    bloomExposure_ = createDoubleSpinBox(0.05, 8.0, 0.05);
+    bloomThreshold_ = createDoubleSpinBox(0.0, 20.0, 0.05);
+    bloomStrength_ = createDoubleSpinBox(0.0, 5.0, 0.05);
+    bloomBlurPassCount_ = new QSpinBox(postProcessGroup);
+    bloomBlurPassCount_->setRange(1, 16);
+    bloomBlurPassCount_->setSingleStep(1);
+    postProcessLayout->addRow(QStringLiteral("Enabled"), bloomEnabled_);
+    postProcessLayout->addRow(QStringLiteral("Exposure"), bloomExposure_);
+    postProcessLayout->addRow(QStringLiteral("Threshold"), bloomThreshold_);
+    postProcessLayout->addRow(QStringLiteral("Strength"), bloomStrength_);
+    postProcessLayout->addRow(QStringLiteral("Blur Passes"), bloomBlurPassCount_);
+    layout->addWidget(postProcessGroup);
+
+    auto* shadowGroup = new QGroupBox(QStringLiteral("Shadows"), this);
+    auto* shadowLayout = new QFormLayout(shadowGroup);
+    softShadowsEnabled_ = new QCheckBox(QStringLiteral("Soft Shadows"), shadowGroup);
+    areaLightSamples_ = new QSpinBox(shadowGroup);
+    areaLightSamples_->setRange(1, 128);
+    areaLightSamples_->setSingleStep(1);
+    shadowLayout->addRow(QStringLiteral("Enabled"), softShadowsEnabled_);
+    shadowLayout->addRow(QStringLiteral("Area Samples"), areaLightSamples_);
+    layout->addWidget(shadowGroup);
+
     auto* sceneGroup = new QGroupBox(QStringLiteral("Scene"), this);
     auto* sceneLayout = new QVBoxLayout(sceneGroup);
     objectList_ = new QListWidget(sceneGroup);
@@ -130,13 +166,15 @@ void ScenePanel::createUi()
     addBoxButton_ = new QPushButton(QStringLiteral("Box"), sceneGroup);
     addCylinderButton_ = new QPushButton(QStringLiteral("Cyl"), sceneGroup);
     addPlaneButton_ = new QPushButton(QStringLiteral("Plane"), sceneGroup);
-    addLightButton_ = new QPushButton(QStringLiteral("Light"), sceneGroup);
+    addLightButton_ = new QPushButton(QStringLiteral("Point"), sceneGroup);
+    addAreaLightButton_ = new QPushButton(QStringLiteral("Area"), sceneGroup);
     deleteButton_ = new QPushButton(QStringLiteral("Delete"), sceneGroup);
     buttonRow->addWidget(addSphereButton_);
     buttonRow->addWidget(addBoxButton_);
     buttonRow->addWidget(addCylinderButton_);
     buttonRow->addWidget(addPlaneButton_);
     buttonRow->addWidget(addLightButton_);
+    buttonRow->addWidget(addAreaLightButton_);
     buttonRow->addWidget(deleteButton_);
     sceneLayout->addLayout(buttonRow);
     layout->addWidget(sceneGroup, 1);
@@ -153,10 +191,12 @@ void ScenePanel::createUi()
     sphereCenterZ_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
     sphereRadius_ = createDoubleSpinBox(0.01, 100.0, 0.05);
     sphereMaterialType_ = new QComboBox(spherePage);
-    sphereMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass")});
+    sphereMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     sphereAlbedoButton_ = new QPushButton(spherePage);
     sphereRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     sphereRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
+    sphereEmissionColorButton_ = new QPushButton(spherePage);
+    sphereEmissionStrength_ = createDoubleSpinBox(0.0, 20.0, 0.25);
     sphereLayout->addRow(QStringLiteral("Center X"), sphereCenterX_);
     sphereLayout->addRow(QStringLiteral("Center Y"), sphereCenterY_);
     sphereLayout->addRow(QStringLiteral("Center Z"), sphereCenterZ_);
@@ -165,6 +205,8 @@ void ScenePanel::createUi()
     sphereLayout->addRow(QStringLiteral("Albedo"), sphereAlbedoButton_);
     sphereLayout->addRow(QStringLiteral("Roughness"), sphereRoughness_);
     sphereLayout->addRow(QStringLiteral("Refractive Index"), sphereRefractiveIndex_);
+    sphereLayout->addRow(QStringLiteral("Emission Color"), sphereEmissionColorButton_);
+    sphereLayout->addRow(QStringLiteral("Emission Strength"), sphereEmissionStrength_);
     editorStack_->addWidget(spherePage);
 
     auto* boxPage = new QWidget(editorStack_);
@@ -176,10 +218,12 @@ void ScenePanel::createUi()
     boxSizeY_ = createDoubleSpinBox(0.01, 100.0, 0.05);
     boxSizeZ_ = createDoubleSpinBox(0.01, 100.0, 0.05);
     boxMaterialType_ = new QComboBox(boxPage);
-    boxMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass")});
+    boxMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     boxAlbedoButton_ = new QPushButton(boxPage);
     boxRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     boxRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
+    boxEmissionColorButton_ = new QPushButton(boxPage);
+    boxEmissionStrength_ = createDoubleSpinBox(0.0, 20.0, 0.25);
     boxLayout->addRow(QStringLiteral("Center X"), boxCenterX_);
     boxLayout->addRow(QStringLiteral("Center Y"), boxCenterY_);
     boxLayout->addRow(QStringLiteral("Center Z"), boxCenterZ_);
@@ -190,6 +234,8 @@ void ScenePanel::createUi()
     boxLayout->addRow(QStringLiteral("Albedo"), boxAlbedoButton_);
     boxLayout->addRow(QStringLiteral("Roughness"), boxRoughness_);
     boxLayout->addRow(QStringLiteral("Refractive Index"), boxRefractiveIndex_);
+    boxLayout->addRow(QStringLiteral("Emission Color"), boxEmissionColorButton_);
+    boxLayout->addRow(QStringLiteral("Emission Strength"), boxEmissionStrength_);
     editorStack_->addWidget(boxPage);
 
     auto* cylinderPage = new QWidget(editorStack_);
@@ -200,10 +246,12 @@ void ScenePanel::createUi()
     cylinderRadius_ = createDoubleSpinBox(0.01, 100.0, 0.05);
     cylinderHeight_ = createDoubleSpinBox(0.01, 100.0, 0.05);
     cylinderMaterialType_ = new QComboBox(cylinderPage);
-    cylinderMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass")});
+    cylinderMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     cylinderAlbedoButton_ = new QPushButton(cylinderPage);
     cylinderRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     cylinderRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
+    cylinderEmissionColorButton_ = new QPushButton(cylinderPage);
+    cylinderEmissionStrength_ = createDoubleSpinBox(0.0, 20.0, 0.25);
     cylinderLayout->addRow(QStringLiteral("Center X"), cylinderCenterX_);
     cylinderLayout->addRow(QStringLiteral("Center Y"), cylinderCenterY_);
     cylinderLayout->addRow(QStringLiteral("Center Z"), cylinderCenterZ_);
@@ -213,6 +261,8 @@ void ScenePanel::createUi()
     cylinderLayout->addRow(QStringLiteral("Albedo"), cylinderAlbedoButton_);
     cylinderLayout->addRow(QStringLiteral("Roughness"), cylinderRoughness_);
     cylinderLayout->addRow(QStringLiteral("Refractive Index"), cylinderRefractiveIndex_);
+    cylinderLayout->addRow(QStringLiteral("Emission Color"), cylinderEmissionColorButton_);
+    cylinderLayout->addRow(QStringLiteral("Emission Strength"), cylinderEmissionStrength_);
     editorStack_->addWidget(cylinderPage);
 
     auto* planePage = new QWidget(editorStack_);
@@ -224,10 +274,12 @@ void ScenePanel::createUi()
     planeNormalY_ = createDoubleSpinBox(-1.0, 1.0, 0.05);
     planeNormalZ_ = createDoubleSpinBox(-1.0, 1.0, 0.05);
     planeMaterialType_ = new QComboBox(planePage);
-    planeMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass")});
+    planeMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     planeAlbedoButton_ = new QPushButton(planePage);
     planeRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     planeRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
+    planeEmissionColorButton_ = new QPushButton(planePage);
+    planeEmissionStrength_ = createDoubleSpinBox(0.0, 20.0, 0.25);
     planeLayout->addRow(QStringLiteral("Point X"), planePointX_);
     planeLayout->addRow(QStringLiteral("Point Y"), planePointY_);
     planeLayout->addRow(QStringLiteral("Point Z"), planePointZ_);
@@ -238,6 +290,8 @@ void ScenePanel::createUi()
     planeLayout->addRow(QStringLiteral("Albedo"), planeAlbedoButton_);
     planeLayout->addRow(QStringLiteral("Roughness"), planeRoughness_);
     planeLayout->addRow(QStringLiteral("Refractive Index"), planeRefractiveIndex_);
+    planeLayout->addRow(QStringLiteral("Emission Color"), planeEmissionColorButton_);
+    planeLayout->addRow(QStringLiteral("Emission Strength"), planeEmissionStrength_);
     editorStack_->addWidget(planePage);
 
     auto* lightPage = new QWidget(editorStack_);
@@ -245,11 +299,21 @@ void ScenePanel::createUi()
     lightPositionX_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
     lightPositionY_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
     lightPositionZ_ = createDoubleSpinBox(-100.0, 100.0, 0.1);
+    lightNormalX_ = createDoubleSpinBox(-1.0, 1.0, 0.05);
+    lightNormalY_ = createDoubleSpinBox(-1.0, 1.0, 0.05);
+    lightNormalZ_ = createDoubleSpinBox(-1.0, 1.0, 0.05);
+    lightWidth_ = createDoubleSpinBox(0.01, 100.0, 0.05);
+    lightHeight_ = createDoubleSpinBox(0.01, 100.0, 0.05);
     lightColorButton_ = new QPushButton(lightPage);
     lightIntensity_ = createDoubleSpinBox(0.0, 1000.0, 1.0);
     lightLayout->addRow(QStringLiteral("Position X"), lightPositionX_);
     lightLayout->addRow(QStringLiteral("Position Y"), lightPositionY_);
     lightLayout->addRow(QStringLiteral("Position Z"), lightPositionZ_);
+    lightLayout->addRow(QStringLiteral("Normal X"), lightNormalX_);
+    lightLayout->addRow(QStringLiteral("Normal Y"), lightNormalY_);
+    lightLayout->addRow(QStringLiteral("Normal Z"), lightNormalZ_);
+    lightLayout->addRow(QStringLiteral("Width"), lightWidth_);
+    lightLayout->addRow(QStringLiteral("Height"), lightHeight_);
     lightLayout->addRow(QStringLiteral("Color"), lightColorButton_);
     lightLayout->addRow(QStringLiteral("Intensity"), lightIntensity_);
     editorStack_->addWidget(lightPage);
@@ -259,39 +323,51 @@ void ScenePanel::createUi()
 
     connect(presetComboBox_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &ScenePanel::handlePresetChanged);
+    connect(bloomEnabled_, &QCheckBox::toggled, this, &ScenePanel::handleBloomChanged);
+    connect(bloomExposure_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBloomChanged);
+    connect(bloomThreshold_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBloomChanged);
+    connect(bloomStrength_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBloomChanged);
+    connect(bloomBlurPassCount_, qOverload<int>(&QSpinBox::valueChanged), this, &ScenePanel::handleBloomChanged);
+    connect(softShadowsEnabled_, &QCheckBox::toggled, this, &ScenePanel::handleSoftShadowChanged);
+    connect(areaLightSamples_, qOverload<int>(&QSpinBox::valueChanged), this, &ScenePanel::handleSoftShadowChanged);
     connect(objectList_, &QListWidget::currentRowChanged, this, &ScenePanel::handleSelectionChanged);
     connect(addSphereButton_, &QPushButton::clicked, this, &ScenePanel::handleAddSphere);
     connect(addBoxButton_, &QPushButton::clicked, this, &ScenePanel::handleAddBox);
     connect(addCylinderButton_, &QPushButton::clicked, this, &ScenePanel::handleAddCylinder);
     connect(addPlaneButton_, &QPushButton::clicked, this, &ScenePanel::handleAddPlane);
     connect(addLightButton_, &QPushButton::clicked, this, &ScenePanel::handleAddLight);
+    connect(addAreaLightButton_, &QPushButton::clicked, this, &ScenePanel::handleAddAreaLight);
     connect(deleteButton_, &QPushButton::clicked, this, &ScenePanel::handleDeleteSelected);
 
-    for (QDoubleSpinBox* spinBox : {sphereCenterX_, sphereCenterY_, sphereCenterZ_, sphereRadius_, sphereRoughness_, sphereRefractiveIndex_}) {
+    for (QDoubleSpinBox* spinBox : {sphereCenterX_, sphereCenterY_, sphereCenterZ_, sphereRadius_, sphereRoughness_, sphereRefractiveIndex_, sphereEmissionStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleSphereChanged);
     }
     connect(sphereMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleSphereChanged);
     connect(sphereAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseSphereAlbedo);
+    connect(sphereEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseSphereEmissionColor);
 
-    for (QDoubleSpinBox* spinBox : {boxCenterX_, boxCenterY_, boxCenterZ_, boxSizeX_, boxSizeY_, boxSizeZ_, boxRoughness_, boxRefractiveIndex_}) {
+    for (QDoubleSpinBox* spinBox : {boxCenterX_, boxCenterY_, boxCenterZ_, boxSizeX_, boxSizeY_, boxSizeZ_, boxRoughness_, boxRefractiveIndex_, boxEmissionStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBoxChanged);
     }
     connect(boxMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleBoxChanged);
     connect(boxAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseBoxAlbedo);
+    connect(boxEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseBoxEmissionColor);
 
-    for (QDoubleSpinBox* spinBox : {cylinderCenterX_, cylinderCenterY_, cylinderCenterZ_, cylinderRadius_, cylinderHeight_, cylinderRoughness_, cylinderRefractiveIndex_}) {
+    for (QDoubleSpinBox* spinBox : {cylinderCenterX_, cylinderCenterY_, cylinderCenterZ_, cylinderRadius_, cylinderHeight_, cylinderRoughness_, cylinderRefractiveIndex_, cylinderEmissionStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleCylinderChanged);
     }
     connect(cylinderMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleCylinderChanged);
     connect(cylinderAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseCylinderAlbedo);
+    connect(cylinderEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseCylinderEmissionColor);
 
-    for (QDoubleSpinBox* spinBox : {planePointX_, planePointY_, planePointZ_, planeNormalX_, planeNormalY_, planeNormalZ_, planeRoughness_, planeRefractiveIndex_}) {
+    for (QDoubleSpinBox* spinBox : {planePointX_, planePointY_, planePointZ_, planeNormalX_, planeNormalY_, planeNormalZ_, planeRoughness_, planeRefractiveIndex_, planeEmissionStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handlePlaneChanged);
     }
     connect(planeMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handlePlaneChanged);
     connect(planeAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::choosePlaneAlbedo);
+    connect(planeEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::choosePlaneEmissionColor);
 
-    for (QDoubleSpinBox* spinBox : {lightPositionX_, lightPositionY_, lightPositionZ_, lightIntensity_}) {
+    for (QDoubleSpinBox* spinBox : {lightPositionX_, lightPositionY_, lightPositionZ_, lightNormalX_, lightNormalY_, lightNormalZ_, lightWidth_, lightHeight_, lightIntensity_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleLightChanged);
     }
     connect(lightColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseLightColor);
@@ -362,6 +438,18 @@ void ScenePanel::handleAddCylinder()
 void ScenePanel::handleAddLight()
 {
     scene_.addLight(tinyray::Light(tinyray::Vec3(2.0, 3.0, 2.0), tinyray::Vec3(1.0, 0.95, 0.85), 16.0));
+    rebuildObjectList(2, static_cast<int>(scene_.lights.size()) - 1);
+    emitSceneChanged();
+}
+
+void ScenePanel::handleAddAreaLight()
+{
+    scene_.addLight(tinyray::Light::area(tinyray::Vec3(0.0, 3.0, -0.5),
+                                         tinyray::Vec3(0.0, -1.0, 0.0),
+                                         2.6,
+                                         1.2,
+                                         tinyray::Vec3(1.0, 0.84, 0.62),
+                                         18.0));
     rebuildObjectList(2, static_cast<int>(scene_.lights.size()) - 1);
     emitSceneChanged();
 }
@@ -475,9 +563,41 @@ void ScenePanel::handleLightChanged()
     }
 
     light->position = tinyray::Vec3(lightPositionX_->value(), lightPositionY_->value(), lightPositionZ_->value());
+    tinyray::Vec3 normal(lightNormalX_->value(), lightNormalY_->value(), lightNormalZ_->value());
+    if (normal.nearZero()) {
+        normal = tinyray::Vec3(0.0, -1.0, 0.0);
+    }
+    light->normal = normal.normalized();
+    light->width = lightWidth_->value();
+    light->height = lightHeight_->value();
     light->color = colorToVec3(lightColor_);
     light->intensity = lightIntensity_->value();
     rebuildObjectList(2, objectList_->currentItem()->data(Qt::UserRole + 1).toInt());
+    emitSceneChanged();
+}
+
+void ScenePanel::handleBloomChanged()
+{
+    if (updating_) {
+        return;
+    }
+
+    scene_.bloomSettings.enabled = bloomEnabled_->isChecked();
+    scene_.bloomSettings.exposure = bloomExposure_->value();
+    scene_.bloomSettings.threshold = bloomThreshold_->value();
+    scene_.bloomSettings.strength = bloomStrength_->value();
+    scene_.bloomSettings.blurPassCount = bloomBlurPassCount_->value();
+    emitSceneChanged();
+}
+
+void ScenePanel::handleSoftShadowChanged()
+{
+    if (updating_) {
+        return;
+    }
+
+    scene_.softShadowsEnabled = softShadowsEnabled_->isChecked();
+    scene_.areaLightSamples = areaLightSamples_->value();
     emitSceneChanged();
 }
 
@@ -560,7 +680,11 @@ void ScenePanel::rebuildObjectList(int preferredKind, int preferredIndex)
     }
 
     for (int index = 0; index < static_cast<int>(scene_.lights.size()); ++index) {
-        auto* item = new QListWidgetItem(QStringLiteral("Point Light %1").arg(index + 1), objectList_);
+        const tinyray::Light& light = scene_.lights[static_cast<std::size_t>(index)];
+        const QString lightName = light.type == tinyray::LightType::Area
+            ? QStringLiteral("Area Light %1")
+            : QStringLiteral("Point Light %1");
+        auto* item = new QListWidgetItem(lightName.arg(index + 1), objectList_);
         item->setData(Qt::UserRole, QStringLiteral("light"));
         item->setData(Qt::UserRole + 1, index);
         if (preferredKind == 2 && preferredIndex == index) {
@@ -620,6 +744,23 @@ void ScenePanel::emitSceneChanged()
     }
 }
 
+void ScenePanel::syncBloomControls()
+{
+    if (!bloomEnabled_ || !bloomExposure_ || !bloomThreshold_ || !bloomStrength_ || !bloomBlurPassCount_) {
+        return;
+    }
+
+    bloomEnabled_->setChecked(scene_.bloomSettings.enabled);
+    bloomExposure_->setValue(scene_.bloomSettings.safeExposure());
+    bloomThreshold_->setValue(scene_.bloomSettings.safeThreshold());
+    bloomStrength_->setValue(scene_.bloomSettings.safeStrength());
+    bloomBlurPassCount_->setValue(scene_.bloomSettings.safeBlurPassCount());
+    if (softShadowsEnabled_ && areaLightSamples_) {
+        softShadowsEnabled_->setChecked(scene_.softShadowsEnabled);
+        areaLightSamples_->setValue(std::clamp(scene_.areaLightSamples, 1, 128));
+    }
+}
+
 void ScenePanel::setSphereEditor(const tinyray::Sphere& sphere)
 {
     sphereCenterX_->setValue(sphere.center.x);
@@ -670,6 +811,11 @@ void ScenePanel::setLightEditor(const tinyray::Light& light)
     lightPositionX_->setValue(light.position.x);
     lightPositionY_->setValue(light.position.y);
     lightPositionZ_->setValue(light.position.z);
+    lightNormalX_->setValue(light.safeNormal().x);
+    lightNormalY_->setValue(light.safeNormal().y);
+    lightNormalZ_->setValue(light.safeNormal().z);
+    lightWidth_->setValue(std::max(light.width, 0.01));
+    lightHeight_->setValue(std::max(light.height, 0.01));
     lightIntensity_->setValue(light.intensity);
     lightColor_ = vec3ToColor(light.color);
     updateColorButton(lightColorButton_, lightColor_);
@@ -776,6 +922,8 @@ tinyray::Material ScenePanel::readSphereMaterial() const
     material.albedo = colorToVec3(sphereAlbedo_);
     material.roughness = sphereRoughness_->value();
     material.refractiveIndex = sphereRefractiveIndex_->value();
+    material.emissionColor = colorToVec3(sphereEmissionColor_);
+    material.emissionStrength = sphereEmissionStrength_->value();
     return material;
 }
 
@@ -786,6 +934,8 @@ tinyray::Material ScenePanel::readBoxMaterial() const
     material.albedo = colorToVec3(boxAlbedo_);
     material.roughness = boxRoughness_->value();
     material.refractiveIndex = boxRefractiveIndex_->value();
+    material.emissionColor = colorToVec3(boxEmissionColor_);
+    material.emissionStrength = boxEmissionStrength_->value();
     return material;
 }
 
@@ -796,6 +946,8 @@ tinyray::Material ScenePanel::readCylinderMaterial() const
     material.albedo = colorToVec3(cylinderAlbedo_);
     material.roughness = cylinderRoughness_->value();
     material.refractiveIndex = cylinderRefractiveIndex_->value();
+    material.emissionColor = colorToVec3(cylinderEmissionColor_);
+    material.emissionStrength = cylinderEmissionStrength_->value();
     return material;
 }
 
@@ -806,6 +958,8 @@ tinyray::Material ScenePanel::readPlaneMaterial() const
     material.albedo = colorToVec3(planeAlbedo_);
     material.roughness = planeRoughness_->value();
     material.refractiveIndex = planeRefractiveIndex_->value();
+    material.emissionColor = colorToVec3(planeEmissionColor_);
+    material.emissionStrength = planeEmissionStrength_->value();
     return material;
 }
 
@@ -813,12 +967,18 @@ void ScenePanel::writeMaterialToControls(const tinyray::Material& material,
                                          QComboBox* typeCombo,
                                          QDoubleSpinBox* roughnessSpin,
                                          QDoubleSpinBox* refractiveSpin,
+                                         QColor& emissionColorCache,
+                                         QPushButton* emissionColorButton,
+                                         QDoubleSpinBox* emissionStrengthSpin,
                                          QColor& colorCache,
                                          QPushButton* colorButton)
 {
     typeCombo->setCurrentIndex(materialTypeToIndex(material.type));
     roughnessSpin->setValue(material.roughness);
     refractiveSpin->setValue(material.refractiveIndex);
+    emissionColorCache = vec3ToColor(material.emissionColor);
+    updateColorButton(emissionColorButton, emissionColorCache);
+    emissionStrengthSpin->setValue(material.emissionStrength);
     colorCache = vec3ToColor(material.albedo);
     updateColorButton(colorButton, colorCache);
 }

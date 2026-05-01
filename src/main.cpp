@@ -8,11 +8,13 @@
 #include <memory>
 
 #include "core/HitRecord.h"
+#include "core/Light.h"
 #include "core/OrbitCamera.h"
 #include "core/Box.h"
 #include "core/Cylinder.h"
 #include "core/Plane.h"
 #include "core/Ray.h"
+#include "core/RayTracer.h"
 #include "core/Scene.h"
 #include "core/Sphere.h"
 #include "interaction/Picking.h"
@@ -167,6 +169,152 @@ int runSelfTest()
     if (!sceneSnapshot.intersect(oldCenterRay, 0.001, 1000.0, snapshotRecord)
         || snapshotRecord.hitObjectId != movingSphereId) {
         std::cerr << "Scene snapshot changed after GUI scene mutation.\n";
+        return 1;
+    }
+
+    tinyray::Material weakEmissive;
+    weakEmissive.type = tinyray::MaterialType::Emissive;
+    weakEmissive.emissionColor = tinyray::Vec3(1.0, 0.5, 0.1);
+    weakEmissive.emissionStrength = 1.5;
+
+    tinyray::Material zeroEmissive = weakEmissive;
+    zeroEmissive.emissionStrength = 0.0;
+
+    tinyray::Material strongEmissive = weakEmissive;
+    strongEmissive.emissionStrength = 6.0;
+
+    const tinyray::Vec3 weakEmission = weakEmissive.emissionColor * weakEmissive.safeEmissionStrength();
+    const tinyray::Vec3 strongEmission = strongEmissive.emissionColor * strongEmissive.safeEmissionStrength();
+    if (!finite(weakEmission)
+        || !finite(strongEmission)
+        || weakEmission.nearZero()
+        || strongEmission.lengthSquared() <= weakEmission.lengthSquared()) {
+        std::cerr << "Emissive material parameters did not produce valid brightness.\n";
+        return 1;
+    }
+
+    tinyray::Scene emissiveScene;
+    emissiveScene.addSphere(tinyray::Sphere(tinyray::Vec3(0.0, 0.0, -3.0), 1.0, strongEmissive));
+    tinyray::RayTracer emissiveTracer;
+    const tinyray::Vec3 emissiveColor =
+        emissiveTracer.trace(tinyray::Ray(tinyray::Vec3(0.0, 0.0, 0.0),
+                                          tinyray::Vec3(0.0, 0.0, -1.0)),
+                             emissiveScene,
+                             4);
+    if (!finite(emissiveColor) || emissiveColor.nearZero()) {
+        std::cerr << "Ray hit on emissive sphere did not return visible emission.\n";
+        return 1;
+    }
+
+    tinyray::Scene zeroEmissiveScene;
+    zeroEmissiveScene.addSphere(tinyray::Sphere(tinyray::Vec3(0.0, 0.0, -3.0), 1.0, zeroEmissive));
+    const tinyray::Vec3 zeroTraceColor =
+        emissiveTracer.trace(tinyray::Ray(tinyray::Vec3(0.0, 0.0, 0.0),
+                                          tinyray::Vec3(0.0, 0.0, -1.0)),
+                             zeroEmissiveScene,
+                             4);
+    if (!finite(zeroTraceColor) || !zeroTraceColor.nearZero()) {
+        std::cerr << "Zero-strength emissive material did not return black emission.\n";
+        return 1;
+    }
+
+    tinyray::Scene weakEmissiveScene;
+    weakEmissiveScene.addSphere(tinyray::Sphere(tinyray::Vec3(0.0, 0.0, -3.0), 1.0, weakEmissive));
+    const tinyray::Vec3 weakTraceColor =
+        emissiveTracer.trace(tinyray::Ray(tinyray::Vec3(0.0, 0.0, 0.0),
+                                          tinyray::Vec3(0.0, 0.0, -1.0)),
+                             weakEmissiveScene,
+                             4);
+    if (!finite(weakTraceColor) || emissiveColor.lengthSquared() <= weakTraceColor.lengthSquared()) {
+        std::cerr << "Higher emissive strength did not produce a brighter traced color.\n";
+        return 1;
+    }
+
+    tinyray::Scene emissiveSnapshot = emissiveScene;
+    const auto* snapshotSphere = dynamic_cast<const tinyray::Sphere*>(
+        emissiveSnapshot.objects.empty() ? nullptr : emissiveSnapshot.objects.front().get());
+    if (!snapshotSphere
+        || snapshotSphere->material.type != tinyray::MaterialType::Emissive
+        || std::abs(snapshotSphere->material.emissionStrength - strongEmissive.emissionStrength) > 1.0e-9
+        || !finite(snapshotSphere->material.emissionColor)) {
+        std::cerr << "Scene snapshot did not preserve emissive material parameters.\n";
+        return 1;
+    }
+
+    tinyray::BloomSettings bloomSettings;
+    if (!std::isfinite(bloomSettings.safeThreshold())
+        || !std::isfinite(bloomSettings.safeStrength())
+        || bloomSettings.safeBlurPassCount() <= 0) {
+        std::cerr << "Bloom settings are invalid.\n";
+        return 1;
+    }
+
+    tinyray::Light areaLight = tinyray::Light::area(tinyray::Vec3(0.0, 3.0, -2.0),
+                                                    tinyray::Vec3(0.0, -1.0, 0.0),
+                                                    2.0,
+                                                    1.0,
+                                                    tinyray::Vec3(1.0, 0.8, 0.6),
+                                                    12.0);
+    const tinyray::Vec3 samplePoint = areaLight.sampleArea(0.25, 0.75);
+    const tinyray::Vec3 localOffset = samplePoint - areaLight.position;
+    if (areaLight.type != tinyray::LightType::Area
+        || areaLight.width <= 0.0
+        || areaLight.height <= 0.0
+        || !finite(samplePoint)
+        || std::abs(dot(localOffset, areaLight.tangent())) > areaLight.width * 0.5 + 1.0e-6
+        || std::abs(dot(localOffset, areaLight.bitangent())) > areaLight.height * 0.5 + 1.0e-6) {
+        std::cerr << "Area light sampling produced an invalid point.\n";
+        return 1;
+    }
+
+    const tinyray::Vec3 sampleDirection =
+        (samplePoint - tinyray::Vec3(0.0, 0.0, -2.0)).normalized();
+    if (!finite(sampleDirection) || sampleDirection.nearZero()) {
+        std::cerr << "Area light sample direction is invalid.\n";
+        return 1;
+    }
+
+    tinyray::Scene areaLightScene;
+    areaLightScene.softShadowsEnabled = true;
+    areaLightScene.areaLightSamples = 8;
+    tinyray::Material areaDiffuseMaterial;
+    areaLightScene.addPlane(tinyray::Plane(tinyray::Vec3(0.0, -1.0, 0.0),
+                                           tinyray::Vec3(0.0, 1.0, 0.0),
+                                           areaDiffuseMaterial));
+    areaLightScene.addLight(areaLight);
+    tinyray::RayTracer areaLightTracer;
+    const tinyray::Vec3 areaLightColor =
+        areaLightTracer.trace(tinyray::Ray(tinyray::Vec3(0.0, 0.0, 0.0),
+                                           tinyray::Vec3(0.0, -1.0, -2.0).normalized()),
+                              areaLightScene,
+                              4);
+    if (!finite(areaLightColor)
+        || areaLightColor.x < 0.0
+        || areaLightColor.y < 0.0
+        || areaLightColor.z < 0.0) {
+        std::cerr << "Area light shading produced an invalid color.\n";
+        return 1;
+    }
+
+    tinyray::Scene areaLightSnapshot = areaLightScene;
+    if (areaLightSnapshot.lights.empty()
+        || areaLightSnapshot.lights.front().type != tinyray::LightType::Area
+        || std::abs(areaLightSnapshot.lights.front().width - areaLight.width) > 1.0e-9
+        || std::abs(areaLightSnapshot.lights.front().height - areaLight.height) > 1.0e-9
+        || areaLightSnapshot.areaLightSamples != areaLightScene.areaLightSamples) {
+        std::cerr << "Scene snapshot did not preserve area light parameters.\n";
+        return 1;
+    }
+
+    tinyray::Material diffuseMaterial;
+    tinyray::Material metalMaterial;
+    metalMaterial.type = tinyray::MaterialType::Metal;
+    tinyray::Material glassMaterial;
+    glassMaterial.type = tinyray::MaterialType::Glass;
+    if (diffuseMaterial.type != tinyray::MaterialType::Diffuse
+        || metalMaterial.type != tinyray::MaterialType::Metal
+        || glassMaterial.type != tinyray::MaterialType::Glass) {
+        std::cerr << "Existing material types were changed unexpectedly.\n";
         return 1;
     }
 

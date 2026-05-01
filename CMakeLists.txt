@@ -25,6 +25,8 @@ add_executable(TinyRayStudio WIN32
     src/gui/RenderWidget.cpp
     src/gui/ScenePanel.h
     src/gui/ScenePanel.cpp
+    src/gui/ScenePanelEmissive.cpp
+    src/preview/BloomPass.cpp
     src/gui/ScenePanelSelection.cpp
     src/core/Vec3.h
     src/core/MathUtils.h

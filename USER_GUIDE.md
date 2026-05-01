@@ -1,35 +1,35 @@
 # TinyRay Studio 使用文档
 
-本文档面向第一次使用 TinyRay Studio 的用户，按“安装环境、启动程序、渲染图片、编辑场景、保存结果”的顺序说明。
+本文档面向第一次使用 TinyRay Studio 的用户，按“环境准备、实时交互、编辑场景、高质量渲染、保存结果”的顺序说明。
 
 ## 1. 软件简介
 
-TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + CMake** 的 CPU 光线追踪渲染器 GUI。
+TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + CMake** 的图形学桌面工具。
 
-它不是游戏，而是一个计算机图形学展示工具。用户可以通过图形界面调整场景、材质、光源和渲染参数，然后点击 `Render` 生成光线追踪图像。
+程序中央是实时渲染视口，用户可以旋转视角、缩放、选择对象、拖动物体和光源。需要最终高质量图片时，再点击 `High Quality Render` 使用 CPU Ray Tracing 渲染当前场景。
 
-当前支持的图形学功能包括：
+当前支持：
 
-- 球体和平面求交
-- Diffuse 漫反射材质
-- Metal 金属反射材质
-- Glass / Dielectric 折射材质
-- 点光源直接光照
-- 阴影射线
-- 递归反射和折射
-- Schlick 近似反射概率
+- 实时 OpenGL / GLSL 渲染视口
+- Sphere / Plane / Box / Cylinder
+- Point Light 点光源
+- Area Light 矩形面光源
+- Diffuse / Metal / Glass / Emissive 材质
+- Bloom 泛光
+- Exposure 曝光控制
+- Point Light 硬阴影
+- Area Light 软阴影
+- 反射、折射、Schlick 近似
 - 多采样抗锯齿
-- Gamma 校正
 - 多线程 CPU 渲染
-- 渐进式预览
-- PNG 图片导出
+- PNG 导出
 - JSON 场景保存和加载
 
 ## 2. 运行前准备
 
-如果已经拿到可以运行的 `TinyRayStudio.exe`，并且同目录下已经有 Qt DLL，可以直接双击运行。
+如果你已经有可以运行的 `TinyRayStudio.exe`，并且同目录下已经部署 Qt DLL，可以直接双击运行。
 
-如果需要自己编译，需要安装：
+如果需要自己编译，请安装：
 
 - Visual Studio 2022 或 Visual Studio Build Tools
 - CMake
@@ -52,7 +52,7 @@ cd D:\NKUcpp大作业
 配置 CMake：
 
 ```powershell
-cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.11.0/msvc2022_64"
+cmake -S . -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.11.0\msvc2022_64"
 ```
 
 编译 Release：
@@ -69,136 +69,305 @@ D:\NKUcpp大作业\build\Release\TinyRayStudio.exe
 
 ## 4. 部署 Qt DLL
 
-如果双击程序提示缺少 Qt DLL，可以运行：
+如果双击程序提示缺少 DLL，运行：
 
 ```powershell
-& "C:\Qt\6.11.0\msvc2022_64\bin\windeployqt.exe" "D:\NKUcpp大作业\build\Release\TinyRayStudio.exe"
+C:\Qt\6.11.0\msvc2022_64\bin\windeployqt.exe D:\NKUcpp大作业\build\Release\TinyRayStudio.exe
 ```
 
 完成后再次双击 `TinyRayStudio.exe`。
 
-如果出现以下 warning，一般可以先忽略：
-
-```text
-Warning: Cannot find any version of the dxcompiler.dll and dxil.dll.
-Warning: Cannot find Visual Studio installation directory, VCINSTALLDIR is not set.
-```
-
-TinyRay Studio 是 Qt Widgets 程序，不依赖 DirectX 渲染管线。
+如果出现 `dxcompiler.dll` 或 `VCINSTALLDIR` 相关 warning，一般可以先忽略。TinyRay Studio 使用 Qt Widgets 和 OpenGL，不依赖 DirectX 渲染管线。
 
 ## 5. 主界面说明
 
 程序打开后主要分为三部分：
 
-1. 中央渲染预览区  
-   显示当前渲染图像。渲染过程中会渐进式更新。
+1. 中央实时视口  
+   显示当前场景。拖动视角、拖动物体、修改材质、修改光源或修改 Bloom 参数后，画面会立即更新。
 
 2. 右侧控制面板  
-   包含渲染参数、预设场景、场景对象列表、属性编辑器和操作按钮。
+   包含预设场景、对象列表、Inspector 属性编辑器、阴影参数、Bloom 参数和渲染参数。
 
 3. 底部状态栏  
-   显示当前渲染状态、采样进度、总进度和已用时间。
+   显示当前状态，例如 `Real-time rendering`、`Object dragging`、`High quality rendering`、`Render done`。
 
-窗口可以拖动边缘自行调整大小。窗口较小时，右侧控制面板可以滚动。
+窗口可以自由调整大小。右侧面板内容较多时，可以滚动查看。
 
-## 5.1 OpenGL 实时预览
-
-中央区域包含两个标签页：
-
-- `Preview`：OpenGL 实时预览，用于快速查看当前 Scene 和动态调整观察视角；
-- `Render Result`：CPU Ray Tracing 最终渲染结果，用于显示高质量光追图像。
-
-`Preview` 标签页不会启动 CPU 光线追踪，只负责快速交互预览。
+## 6. 实时视口操作
 
 鼠标操作：
 
-- 鼠标左键拖动：围绕目标点旋转视角。
-- 鼠标右键拖动：平移视角。
-- 鼠标滚轮：放大或缩小。
+- 左键拖动空白区域：旋转视角
+- 右键拖动：平移视角
+- 滚轮：缩放视角
+- 左键点击物体：选中物体
+- 左键拖动物体：移动物体
+- 左键点击光源：选中光源
+- 左键拖动光源：移动光源
 
-OpenGL 预览结果不要求与 CPU Ray Tracing 完全一致。最终高质量图像仍由 `Render` 按钮启动 CPU Ray Tracing 生成。
+当前支持拖拽：
 
-## 6. 渲染参数说明
+- Sphere
+- Box
+- Cylinder
+- Point Light
+- Area Light
 
-右侧 `Render Settings` 区域包含：
+Plane 通常作为地面，不建议拖动。
 
-- `Width`  
-  输出图片宽度，默认 `800`。
+## 7. 拖拽方向
 
-- `Height`  
-  输出图片高度，默认 `450`。
+如果界面中提供拖拽模式或移动轴选项，可以选择：
 
-- `Samples`  
-  每像素采样数，可选 `1 / 4 / 8 / 16 / 32 / 64`。  
-  数值越高，噪点越少，但渲染越慢。课堂展示推荐 `16`。
+- XZ 平面移动：适合在地面上移动物体
+- X 轴移动：只改变 X 坐标
+- Y 轴移动：只改变高度
+- Z 轴移动：只改变 Z 坐标
 
-- `Max Depth`  
-  递归深度，用于控制反射和折射最多递归多少次。默认 `5`。
+摆放物体时推荐使用 XZ 平面移动；调整光源高度时推荐使用 Y 轴移动。
 
-- `Threads`  
-  CPU 渲染线程数。默认使用硬件并发线程数。线程越多通常越快，但也会占用更多 CPU。
-
-## 7. 使用预设场景
+## 8. 预设场景
 
 右侧 `Presets` 下拉框提供内置场景：
 
 - `Colored Lights Demo`  
-  多个彩色点光源照射不同材质球体，适合展示彩色光照和阴影。
+  展示彩色灯光、金属、玻璃、Emissive 发光物体、Area Light 和 Bloom。
 
 - `Reflection Demo`  
-  金属球、彩色球和地面，用于展示金属反射。
+  展示金属反射、彩色球体、地面和基础光照。
 
 - `Glass Demo`  
-  玻璃球、地面和多光源，用于展示折射、反射和全反射效果。
+  展示玻璃折射、反射、全反射和多光源效果。
 
 选择预设后，当前场景会被替换，对象列表会自动刷新。
 
-## 8. 开始渲染
+## 9. 场景对象列表
 
-设置好场景和参数后，点击：
+右侧 `Scene` 区域显示当前场景中的对象和光源。
+
+常见条目：
 
 ```text
-Render
+Sphere 1 (Diffuse)
+Sphere 2 (Metal)
+Sphere 3 (Glass)
+Box 1 (Emissive)
+Cylinder 1 (Metal)
+Plane 1 (Diffuse)
+Point Light 1
+Area Light 2
+```
+
+点击条目后，下方 `Inspector` 会显示该对象或光源的可编辑属性。
+
+## 10. 添加和删除对象
+
+可以通过右侧按钮添加：
+
+- `Sphere`
+- `Box`
+- `Cyl`
+- `Plane`
+- `Point`
+- `Area`
+
+其中：
+
+- `Point` 添加点光源
+- `Area` 添加矩形面光源
+
+选中对象或光源后，点击 `Delete` 可以删除。
+
+## 11. 编辑几何体
+
+Sphere 可编辑：
+
+- `Center X / Y / Z`
+- `Radius`
+- `Material`
+- `Albedo`
+- `Roughness`
+- `Refractive Index`
+- `Emission Color`
+- `Emission Strength`
+
+Box 可编辑：
+
+- `Center X / Y / Z`
+- `Size X / Y / Z`
+- `Material`
+- `Albedo`
+- `Roughness`
+- `Refractive Index`
+- `Emission Color`
+- `Emission Strength`
+
+Cylinder 可编辑：
+
+- `Center X / Y / Z`
+- `Radius`
+- `Height`
+- `Material`
+- `Albedo`
+- `Roughness`
+- `Refractive Index`
+- `Emission Color`
+- `Emission Strength`
+
+Plane 可编辑：
+
+- `Point X / Y / Z`
+- `Normal X / Y / Z`
+- `Material`
+- `Albedo`
+- `Roughness`
+- `Refractive Index`
+- `Emission Color`
+- `Emission Strength`
+
+修改参数后，中央实时视口会立即更新。点击 `High Quality Render` 后，CPU 渲染会使用最新场景。
+
+## 12. 材质说明
+
+### Diffuse
+
+漫反射材质，适合普通彩色物体和地面。
+
+### Metal
+
+金属反射材质。`Roughness` 越低，反射越清晰；越高，反射越模糊。
+
+### Glass
+
+玻璃折射材质。`Refractive Index` 常用值为 `1.5`。
+
+### Emissive
+
+自发光材质。设置方法：
+
+1. 选中 Sphere、Box、Cylinder 或 Plane。
+2. 将 `Material` 改成 `Emissive`。
+3. 设置 `Emission Color`。
+4. 调整 `Emission Strength`。
+
+建议：
+
+```text
+Emission Strength = 3.0 到 8.0
+```
+
+Emissive 是材质效果，Area Light 是显式光源，两者不是同一个概念。
+
+## 13. 编辑 Point Light
+
+选中 Point Light 后，可以编辑：
+
+- `Position X / Y / Z`
+- `Color`
+- `Intensity`
+
+Point Light 在 CPU 渲染中使用单条 shadow ray，因此阴影边缘较硬。
+
+## 14. 编辑 Area Light
+
+选中 Area Light 后，可以编辑：
+
+- `Position X / Y / Z`：矩形面光源中心位置
+- `Normal X / Y / Z`：矩形朝向
+- `Width`：矩形宽度
+- `Height`：矩形高度
+- `Color`：光源颜色
+- `Intensity`：光源强度
+
+Area Light 会在实时视口中显示为发光矩形。选中后会高亮显示，并且可以像点光源一样拖拽移动。
+
+CPU 高质量渲染中，Area Light 会产生软阴影。
+
+## 15. 软阴影设置
+
+右侧 `Shadows` 分组包含：
+
+- `Enabled`：是否开启 Area Light 软阴影
+- `Area Samples`：面光源采样数
+
+推荐值：
+
+```text
+Area Samples = 8 或 16
+```
+
+采样数越高，软阴影越平滑，但 CPU 渲染越慢。关闭软阴影后，Area Light 会退化为较低采样的近似效果。
+
+## 16. Bloom 和曝光
+
+右侧 `Post Processing` 分组包含：
+
+- `Enabled`：Bloom 开关
+- `Exposure`：曝光
+- `Threshold`：亮部提取阈值
+- `Strength`：Bloom 强度
+- `Blur Passes`：模糊次数
+
+建议：
+
+```text
+Exposure = 1.0
+Threshold = 0.8 到 1.2
+Strength = 0.5 到 1.0
+Blur Passes = 5 到 8
+```
+
+Bloom 主要作用于实时视口。Emissive 物体和高亮 Area Light 更容易触发 Bloom。
+
+## 17. 高质量 CPU 渲染
+
+点击：
+
+```text
+High Quality Render
 ```
 
 渲染开始后：
 
-- 中央图像会逐步变清晰；
-- 状态栏会显示类似：
+- 状态栏显示当前渲染状态和进度
+- 图片会渐进式更新
+- 可以点击 `Stop` 停止
+- Stop 后保留已渲染出的结果
+
+CPU 渲染使用当前 Scene 的快照，因此拖动物体或修改参数不会直接破坏正在运行的渲染线程。
+
+CPU 渲染中：
+
+- Point Light 产生硬阴影
+- Area Light 产生软阴影
+- Emissive 物体会自己发光
+- Metal / Glass 会递归反射或折射
+
+## 18. 渲染参数
+
+右侧 `Render Settings` 包含：
+
+- `Width`：输出图片宽度，默认 `800`
+- `Height`：输出图片高度，默认 `450`
+- `Samples`：每像素采样数，可选 `1 / 4 / 8 / 16 / 32 / 64`
+- `Max Depth`：反射和折射递归深度，默认 `5`
+- `Threads`：CPU 渲染线程数，默认使用硬件并发线程数
+
+推荐课堂展示参数：
 
 ```text
-Sample 3/16 | 42% | 1.4s
+Width = 800
+Height = 450
+Samples = 16
+Max Depth = 5
+Threads = 默认
+Area Samples = 8 或 16
 ```
 
-含义：
+如果渲染太慢，可以降低 `Samples` 或 `Area Samples`。
 
-- `Sample 3/16`：当前正在显示第 3 次采样后的结果，总共 16 次采样；
-- `42%`：整体渲染进度；
-- `1.4s`：已用时间。
-
-渲染完成后，状态栏显示：
-
-```text
-Done
-```
-
-## 9. 停止渲染
-
-渲染过程中可以点击：
-
-```text
-Stop
-```
-
-程序会尽快停止当前渲染，并保留已经渲染出来的半成品图像。
-
-停止后可以：
-
-- 保存当前半成品图片；
-- 修改参数后重新点击 `Render`；
-- 切换预设或编辑场景。
-
-## 10. 保存图片
+## 19. 保存图片
 
 点击：
 
@@ -212,121 +381,14 @@ Save Image
 File -> Save Image
 ```
 
-可以选择路径并保存 PNG 图片。
+保存规则：
 
-注意：
+- 如果已经生成 CPU 高质量渲染结果，优先保存该结果。
+- 如果还没有 CPU 渲染结果，则保存当前实时视口截图。
 
-- 渲染完成后可以保存最终图；
-- 渲染过程中或 Stop 后也可以保存当前预览图。
+实时视口截图会包含当前 Bloom 效果。
 
-## 11. 场景对象列表
-
-右侧 `Scene` 区域显示当前场景中的对象和光源。
-
-常见条目：
-
-- `Sphere 1 (Diffuse)`
-- `Sphere 2 (Metal)`
-- `Sphere 3 (Glass)`
-- `Plane 1 (Diffuse)`
-- `Point Light 1`
-
-点击列表中的条目后，下方 `Inspector` 会显示该对象的可编辑属性。
-
-## 12. 添加对象
-
-右侧 `Scene` 区域有三个添加按钮：
-
-- `Sphere`  
-  添加一个球体。
-
-- `Plane`  
-  添加一个平面。
-
-- `Light`  
-  添加一个点光源。
-
-添加后，对象会出现在列表中。修改参数后，再次点击 `Render` 即可使用新场景渲染。
-
-## 13. 删除对象
-
-在对象列表中选中一个对象或光源，然后点击：
-
-```text
-Delete
-```
-
-该对象会从当前场景中删除。
-
-如果误删，可以重新选择预设场景恢复一个完整场景。
-
-## 14. 编辑 Sphere
-
-选中球体后，可以编辑：
-
-- `Center X / Y / Z`  
-  球心坐标。
-
-- `Radius`  
-  球半径。
-
-- `Material`  
-  材质类型：
-  - `Diffuse`：漫反射材质；
-  - `Metal`：金属反射材质；
-  - `Glass`：玻璃折射材质。
-
-- `Albedo`  
-  材质基础颜色。
-
-- `Roughness`  
-  金属材质粗糙度。  
-  越接近 `0`，反射越清晰；越接近 `1`，反射越模糊。
-
-- `Refractive Index`  
-  玻璃折射率。常见玻璃可使用 `1.5`。
-
-修改后重新点击 `Render` 查看结果。
-
-## 15. 编辑 Plane
-
-选中平面后，可以编辑：
-
-- `Point X / Y / Z`  
-  平面经过的点。
-
-- `Normal X / Y / Z`  
-  平面法线方向。  
-  例如地面通常使用：
-
-```text
-Normal = (0, 1, 0)
-```
-
-- `Material`
-- `Albedo`
-- `Roughness`
-- `Refractive Index`
-
-一般情况下，平面建议使用 `Diffuse` 或 `Metal`。
-
-## 16. 编辑 Point Light
-
-选中点光源后，可以编辑：
-
-- `Position X / Y / Z`  
-  光源位置。
-
-- `Color`  
-  光源颜色。
-
-- `Intensity`  
-  光源强度。
-
-如果画面太暗，可以提高 `Intensity`。  
-如果画面过曝，可以降低 `Intensity`。
-
-## 17. 保存场景
+## 20. 保存场景
 
 点击：
 
@@ -340,23 +402,33 @@ Save Scene
 File -> Save Scene
 ```
 
-可以保存当前场景为 JSON 文件。
-
-JSON 中包含：
+可以保存当前场景为 JSON 文件。JSON 中包含：
 
 - camera
 - render settings
 - objects
 - materials
 - lights
+- bloom settings
+- soft shadow settings
 
-建议文件名示例：
+Area Light 会保存：
 
-```text
-my_scene.json
-```
+- type
+- position
+- normal
+- width
+- height
+- color
+- intensity
 
-## 18. 加载场景
+Emissive 材质会保存：
+
+- material type
+- emissionColor
+- emissionStrength
+
+## 21. 加载场景
 
 点击：
 
@@ -370,145 +442,60 @@ Load Scene
 File -> Load Scene
 ```
 
-选择之前保存的 JSON 文件即可恢复场景。
+选择之前保存的 JSON 文件即可恢复场景。旧场景文件如果缺少 Area Light、Bloom 或 Emissive 参数，会使用默认值。
 
-如果 JSON 文件格式错误，程序会弹出错误提示，不会崩溃。
-
-## 19. 菜单栏说明
+## 22. 菜单栏说明
 
 ### File
 
-- `Load Scene`：加载 JSON 场景。
-- `Save Scene`：保存当前场景为 JSON。
-- `Save Image`：保存当前渲染图为 PNG。
-- `Exit`：退出程序。
+- `Load Scene`：加载 JSON 场景
+- `Save Scene`：保存当前场景为 JSON
+- `Save Image`：保存当前图像为 PNG
+- `Exit`：退出程序
 
 ### Render
 
-- `Start Render`：开始渲染。
-- `Stop Render`：停止渲染。
-- `Clear Image`：清空预览图。
+- `Start Render` 或 `High Quality Render`：启动 CPU 高质量渲染
+- `Stop Render`：停止渲染
+- `Clear Image`：清空当前高质量渲染结果
 
 ### Help
 
-- `About`：查看项目说明。
+- `About`：查看项目说明
 
-## 20. 推荐展示流程
+## 23. 推荐展示流程
 
-课堂或答辩展示时，可以按下面顺序操作：
+课堂或答辩展示时，可以按下面顺序：
 
-1. 打开程序，展示整体界面。
-2. 选择 `Colored Lights Demo`。
-3. 保持默认参数：
+1. 打开程序，展示中央实时渲染视口。
+2. 旋转、平移、缩放视角。
+3. 拖动 Sphere 或 Box，说明实时交互不会启动 CPU 渲染。
+4. 拖动 Area Light，展示面光源位置变化。
+5. 调整 `Area Samples`，说明采样数和软阴影质量的关系。
+6. 将一个物体改成 `Emissive`，调整发光颜色和强度。
+7. 调整 Bloom 的 `Threshold`、`Strength` 和 `Exposure`。
+8. 点击 `High Quality Render`，展示 CPU 光追、Area Light 软阴影和渐进式更新。
+9. 点击 `Save Image` 导出 PNG。
+10. 点击 `Save Scene` 保存 JSON，再用 `Load Scene` 加载回来。
 
-```text
-800 x 450
-Samples = 16
-Max Depth = 5
-```
+## 24. 常见问题
 
-4. 点击 `Render`，展示渐进式渲染和多线程进度。
-5. 点击 `Stop`，说明可以保留半成品。
-6. 再次点击 `Render` 渲染完成。
-7. 切换到 `Reflection Demo`，展示金属反射。
-8. 切换到 `Glass Demo`，展示玻璃折射。
-9. 选中一个球体，修改颜色或材质，重新渲染。
-10. 点击 `Save Image` 导出 PNG。
-11. 点击 `Save Scene` 保存 JSON，再用 `Load Scene` 加载回来。
+### 为什么实时视口和 CPU 渲染结果不完全一样？
 
-## 21. 参数建议
+实时视口优先保证交互流畅，使用 GPU / OpenGL 快速显示；CPU Ray Tracing 用于最终高质量输出。两者目标不同，因此效果可以有差异。
 
-如果电脑性能一般：
+### 为什么实时视口没有明显软阴影？
 
-```text
-Width = 800
-Height = 450
-Samples = 8 或 16
-Max Depth = 5
-Threads = 默认
-```
+当前软阴影重点实现于 CPU 高质量渲染。实时视口中 Area Light 主要负责可视化和基础照明，方便交互。
 
-如果想要更清晰的图：
+### 为什么 Area Light 采样数越高越慢？
 
-```text
-Width = 1280
-Height = 720
-Samples = 32 或 64
-Max Depth = 8
-Threads = 默认
-```
+Area Light 软阴影通过多条 shadow ray 采样矩形面光源。采样越多，阴影越平滑，但 CPU 计算量也越大。
 
-如果渲染太慢：
+### 为什么 Emissive 物体和 Area Light 都会发亮？
 
-- 降低 Samples；
-- 降低分辨率；
-- 降低 Max Depth；
-- 减少玻璃或金属球数量。
+Emissive 是材质层面的自发光物体；Area Light 是显式光源对象。它们看起来都亮，但用途不同。
 
-## 22. 常见问题
+### 为什么图片有噪点？
 
-### 程序打不开，提示缺 DLL
-
-运行：
-
-```powershell
-& "C:\Qt\6.11.0\msvc2022_64\bin\windeployqt.exe" "D:\NKUcpp大作业\build\Release\TinyRayStudio.exe"
-```
-
-然后重新打开程序。
-
-### 编译时提示 TinyRayStudio.exe 无法打开
-
-通常是程序还在运行。先关闭窗口，或在任务管理器中结束 `TinyRayStudio.exe`，再重新编译。
-
-### 渲染出来很暗
-
-可以尝试：
-
-- 增加 Light 的 `Intensity`；
-- 添加更多点光源；
-- 调整光源位置；
-- 换用更亮的 Albedo 颜色。
-
-### 渲染出来噪点很多
-
-增加 Samples：
-
-```text
-16 -> 32 -> 64
-```
-
-但采样越高，渲染越慢。
-
-### 玻璃球看起来不明显
-
-可以尝试：
-
-- 使用 `Glass Demo`；
-- 提高 `Max Depth` 到 `6` 或 `8`；
-- 在玻璃球后面放彩色球或彩色光源；
-- 使用 `Refractive Index = 1.5`。
-
-### 改了代码但界面没变化
-
-需要重新编译：
-
-```powershell
-cmake --build build --config Release
-```
-
-然后重新打开程序。
-
-## 23. 文件说明
-
-常用文件：
-
-- `README.md`：项目简介。
-- `USER_GUIDE.md`：本文档，详细使用说明。
-- `PROJECT_SPEC.md`：完整项目规格说明。
-- `AGENTS.md`：Agent 工作规则。
-- `VALIDATION_PLAN.md`：验证计划。
-- `VALIDATION_REPORT.md`：验证报告。
-- `CMakeLists.txt`：CMake 构建配置。
-- `src/core/`：光线追踪核心代码。
-- `src/gui/`：Qt Widgets GUI 代码。
+提高 `Samples` 和 `Area Samples` 可以减少噪点，但渲染时间会增加。展示时可以先用低参数快速演示，再提高参数渲染最终图。

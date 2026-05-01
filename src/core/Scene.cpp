@@ -14,6 +14,9 @@ Scene& Scene::operator=(const Scene& other)
     }
 
     camera = other.camera;
+    bloomSettings = other.bloomSettings;
+    softShadowsEnabled = other.softShadowsEnabled;
+    areaLightSamples = other.areaLightSamples;
     selectedObjectId = other.selectedObjectId;
     lights = other.lights;
     objects.clear();
@@ -205,9 +208,16 @@ Scene Scene::createColoredLightsDemo()
     scene.camera.lookAt = Vec3(0.0, 0.1, -0.35);
     scene.camera.up = Vec3(0.0, 1.0, 0.0);
     scene.camera.fieldOfViewYDegrees = 42.0;
+    scene.bloomSettings.enabled = true;
+    scene.bloomSettings.exposure = 1.05;
+    scene.bloomSettings.threshold = 0.85;
+    scene.bloomSettings.strength = 0.90;
+    scene.bloomSettings.blurPassCount = 7;
+    scene.softShadowsEnabled = true;
+    scene.areaLightSamples = 16;
 
     Material groundMaterial;
-    groundMaterial.albedo = Vec3(0.35, 0.36, 0.40);
+    groundMaterial.albedo = Vec3(0.18, 0.19, 0.22);
 
     Material redMaterial;
     redMaterial.albedo = Vec3(0.95, 0.20, 0.18);
@@ -233,18 +243,38 @@ Scene Scene::createColoredLightsDemo()
     cyanGlassMaterial.albedo = Vec3(0.78, 0.95, 1.0);
     cyanGlassMaterial.refractiveIndex = 1.5;
 
+    Material orangeEmissiveMaterial;
+    orangeEmissiveMaterial.type = MaterialType::Emissive;
+    orangeEmissiveMaterial.albedo = Vec3(1.0, 0.45, 0.12);
+    orangeEmissiveMaterial.emissionColor = Vec3(1.0, 0.45, 0.12);
+    orangeEmissiveMaterial.emissionStrength = 6.0;
+
+    Material violetEmissiveMaterial;
+    violetEmissiveMaterial.type = MaterialType::Emissive;
+    violetEmissiveMaterial.albedo = Vec3(0.45, 0.25, 1.0);
+    violetEmissiveMaterial.emissionColor = Vec3(0.45, 0.25, 1.0);
+    violetEmissiveMaterial.emissionStrength = 4.5;
+
     scene.addPlane(Plane(Vec3(0.0, -0.5, 0.0), Vec3(0.0, 1.0, 0.0), groundMaterial));
     scene.addSphere(Sphere(Vec3(-1.35, 0.0, -0.15), 0.5, redMaterial));
     scene.addSphere(Sphere(Vec3(-0.15, 0.0, -0.55), 0.5, metalMaterial));
     scene.addSphere(Sphere(Vec3(1.05, 0.0, -0.2), 0.5, glassMaterial));
     scene.addSphere(Sphere(Vec3(0.15, 0.85, -1.45), 0.35, greenMaterial));
+    scene.addSphere(Sphere(Vec3(0.0, 1.55, -0.95), 0.22, orangeEmissiveMaterial));
     scene.addBox(Box(Vec3(-2.05, -0.13, -0.95), Vec3(0.62, 0.74, 0.62), violetMaterial));
     scene.addCylinder(Cylinder(Vec3(2.0, -0.09, -1.1), 0.30, 0.82, redMaterial));
     scene.addBox(Box(Vec3(-0.95, -0.15, -1.85), Vec3(0.55, 0.70, 0.55), metalMaterial));
     scene.addCylinder(Cylinder(Vec3(1.35, -0.08, -1.75), 0.28, 0.84, cyanGlassMaterial));
+    scene.addBox(Box(Vec3(2.25, 0.10, -1.85), Vec3(0.18, 1.20, 0.18), violetEmissiveMaterial));
     scene.addLight(Light(Vec3(-2.6, 2.8, 1.5), Vec3(1.0, 0.18, 0.15), 18.0));
     scene.addLight(Light(Vec3(2.6, 2.8, 1.5), Vec3(0.15, 0.35, 1.0), 18.0));
     scene.addLight(Light(Vec3(0.0, 3.6, 1.0), Vec3(0.30, 1.0, 0.45), 16.0));
+    scene.addLight(Light::area(Vec3(0.0, 3.2, -0.6),
+                               Vec3(0.0, -1.0, 0.15),
+                               3.4,
+                               1.5,
+                               Vec3(1.0, 0.82, 0.55),
+                               18.0));
 
     return scene;
 }

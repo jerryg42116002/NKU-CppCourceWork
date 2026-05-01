@@ -19,6 +19,7 @@
 #include "core/Plane.h"
 #include "core/Sphere.h"
 #include "interaction/Picking.h"
+#include "preview/BloomPass.h"
 
 namespace {
 
@@ -36,6 +37,8 @@ int materialTypeIndex(tinyray::MaterialType type)
         return 1;
     case tinyray::MaterialType::Glass:
         return 2;
+    case tinyray::MaterialType::Emissive:
+        return 3;
     case tinyray::MaterialType::Diffuse:
     default:
         return 0;
@@ -54,6 +57,10 @@ void setMaterialUniform(QOpenGLShaderProgram& program,
                             static_cast<float>(material.clampedRoughness()));
     program.setUniformValue((name + QStringLiteral(".refractiveIndex")).toUtf8().constData(),
                             static_cast<float>(material.safeRefractiveIndex()));
+    program.setUniformValue((name + QStringLiteral(".emissionColor")).toUtf8().constData(),
+                            toQVector3D(material.emissionColor));
+    program.setUniformValue((name + QStringLiteral(".emissionStrength")).toUtf8().constData(),
+                            static_cast<float>(material.safeEmissionStrength()));
 }
 
 } // namespace
@@ -280,6 +287,8 @@ void GLPreviewWidget::initializePathTracer()
             vec3 albedo;
             float roughness;
             float refractiveIndex;
+            vec3 emissionColor;
+            float emissionStrength;
         };
 
         uniform sampler2D uPreviousFrame;
@@ -362,6 +371,8 @@ void GLPreviewWidget::initializePathTracer()
             material.albedo = vec3(0.8);
             material.roughness = 0.2;
             material.refractiveIndex = 1.5;
+            material.emissionColor = vec3(1.0, 0.6, 0.1);
+            material.emissionStrength = 0.0;
             return material;
         }
 
@@ -599,6 +610,11 @@ void GLPreviewWidget::initializePathTracer()
                     radiance += throughput * vec3(0.8, 0.55, 0.08) * 0.12;
                 }
 
+                if (hit.material.type == 3) {
+                    radiance += throughput * hit.material.emissionColor * max(hit.material.emissionStrength, 0.0);
+                    break;
+                }
+
                 vec3 viewDirection = normalize(-rd);
                 radiance += throughput * directLighting(hit.point, normal, viewDirection, hit.material);
 
@@ -660,12 +676,13 @@ void GLPreviewWidget::initializePathTracer()
     static const char* displayFragmentShaderSource = R"(
         #version 120
         uniform sampler2D uImage;
+        uniform float uExposure;
         varying vec2 vUv;
 
         void main()
         {
             vec3 color = texture2D(uImage, vUv).rgb;
-            color = color / (color + vec3(1.0));
+            color = vec3(1.0) - exp(-max(color, vec3(0.0)) * uExposure);
             color = pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
             gl_FragColor = vec4(color, 1.0);
         }
@@ -753,12 +770,22 @@ void GLPreviewWidget::renderPathTracedScene()
     glViewport(0, 0, defaultBufferSize.width(), defaultBufferSize.height());
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    displayProgram_->bind();
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, writeBuffer->texture());
-    displayProgram_->setUniformValue("uImage", 0);
-    drawFullScreenTriangle(*displayProgram_);
-    displayProgram_->release();
+    static BloomPass bloomPass;
+    const bool bloomRendered = scene_.bloomSettings.enabled
+        && bloomPass.render(writeBuffer->texture(),
+                            static_cast<GLuint>(defaultFramebufferObject()),
+                            defaultBufferSize,
+                            scene_.bloomSettings);
+
+    if (!bloomRendered) {
+        displayProgram_->bind();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, writeBuffer->texture());
+        displayProgram_->setUniformValue("uImage", 0);
+        displayProgram_->setUniformValue("uExposure", static_cast<float>(scene_.bloomSettings.safeExposure()));
+        drawFullScreenTriangle(*displayProgram_);
+        displayProgram_->release();
+    }
 
     setupCameraMatrices();
     drawLightMarkersOverlay();
@@ -1105,6 +1132,43 @@ void GLPreviewWidget::drawLightMarker(const tinyray::Light& light, bool selected
     }
 
     const tinyray::Vec3 p = light.position;
+    if (light.type == tinyray::LightType::Area) {
+        const tinyray::Vec3 t = light.tangent();
+        const tinyray::Vec3 b = light.bitangent();
+        const double halfWidth = std::max(light.width, 0.01) * 0.5;
+        const double halfHeight = std::max(light.height, 0.01) * 0.5;
+        const tinyray::Vec3 corners[4] = {
+            p - t * halfWidth - b * halfHeight,
+            p + t * halfWidth - b * halfHeight,
+            p + t * halfWidth + b * halfHeight,
+            p - t * halfWidth + b * halfHeight
+        };
+
+        glColor4d(std::clamp(light.color.x, 0.0, 1.0),
+                  std::clamp(light.color.y, 0.0, 1.0),
+                  std::clamp(light.color.z, 0.0, 1.0),
+                  selected ? 0.72 : 0.48);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBegin(GL_QUADS);
+        for (const tinyray::Vec3& corner : corners) {
+            glVertex3d(corner.x, corner.y, corner.z);
+        }
+        glEnd();
+
+        glColor3d(selected ? 1.0 : std::clamp(light.color.x, 0.0, 1.0),
+                  selected ? 0.82 : std::clamp(light.color.y, 0.0, 1.0),
+                  selected ? 0.12 : std::clamp(light.color.z, 0.0, 1.0));
+        glBegin(GL_LINE_LOOP);
+        for (const tinyray::Vec3& corner : corners) {
+            glVertex3d(corner.x, corner.y, corner.z);
+        }
+        glEnd();
+        glDisable(GL_BLEND);
+        glEnable(GL_LIGHTING);
+        return;
+    }
+
     const double size = selected ? 0.34 : 0.24;
 
     glBegin(GL_LINES);
@@ -1139,6 +1203,14 @@ void GLPreviewWidget::applyMaterial(const tinyray::Material& material, bool sele
         color = tinyray::Vec3(0.65, 0.86, 1.0);
         shininess = 96.0f;
         specular[0] = specular[1] = specular[2] = 0.95f;
+    } else if (material.type == tinyray::MaterialType::Emissive) {
+        const double strength = material.safeEmissionStrength();
+        color = material.emissionColor * (0.35 + std::min(strength, 8.0) * 0.12);
+        shininess = 8.0f;
+        specular[0] = specular[1] = specular[2] = 0.05f;
+        emission[0] = static_cast<GLfloat>(std::clamp(material.emissionColor.x * (0.20 + strength * 0.08), 0.0, 1.0));
+        emission[1] = static_cast<GLfloat>(std::clamp(material.emissionColor.y * (0.20 + strength * 0.08), 0.0, 1.0));
+        emission[2] = static_cast<GLfloat>(std::clamp(material.emissionColor.z * (0.20 + strength * 0.08), 0.0, 1.0));
     }
 
     if (selected) {
