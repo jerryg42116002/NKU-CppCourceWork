@@ -239,7 +239,7 @@ void GLPreviewWidget::setScene(const tinyray::Scene& scene)
     selectedObjectId_ = scene_.selectedObjectId;
     camera_.aperture = std::isfinite(scene_.camera.aperture)
         ? std::clamp(scene_.camera.aperture, 0.0, 5.0)
-        : 0.35;
+        : 0.0;
     camera_.focusDistance = std::isfinite(scene_.camera.focusDistance)
         ? std::clamp(scene_.camera.focusDistance, 0.05, 500.0)
         : std::max(camera_.distance, 0.05);

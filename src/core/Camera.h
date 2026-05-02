@@ -16,7 +16,7 @@ public:
     Vec3 up = Vec3(0.0, 1.0, 0.0);
     double fieldOfViewYDegrees = 45.0;
     double aspectRatio = 16.0 / 9.0;
-    double aperture = 0.35;
+    double aperture = 0.0;
     double focusDistance = 5.0;
 
     Ray generateRay(double u, double v) const

@@ -223,9 +223,9 @@ Scene Scene::createColoredLightsDemo()
     scene.overlayShowPosition = true;
     scene.overlayShowMaterialInfo = true;
     scene.environment.mode = EnvironmentMode::Gradient;
-    scene.environment.topColor = Vec3(0.05, 0.08, 0.16);
-    scene.environment.bottomColor = Vec3(0.42, 0.48, 0.58);
-    scene.environment.solidColor = Vec3(0.04, 0.045, 0.055);
+    scene.environment.topColor = Vec3(0.30, 0.62, 1.00);
+    scene.environment.bottomColor = Vec3(0.82, 0.93, 1.00);
+    scene.environment.solidColor = Vec3(0.48, 0.74, 1.00);
     scene.environment.exposure = 1.0;
     scene.environment.intensity = 1.0;
     scene.environment.rotationY = 0.0;

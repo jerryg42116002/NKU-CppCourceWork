@@ -27,7 +27,7 @@ public:
     double yaw = 0.0;
     double pitch = 15.0;
     double fov = 45.0;
-    double aperture = 0.35;
+    double aperture = 0.0;
     double focusDistance = 5.0;
     Vec3 up = Vec3(0.0, 1.0, 0.0);
     bool turntableEnabled = false;

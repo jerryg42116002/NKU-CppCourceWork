@@ -671,7 +671,7 @@ void MainWindow::handleLoadScene()
     realTimeRenderWidget_->setSelectedObjectId(scene_.selectedObjectId);
     applyRenderSettings(loadedSettings);
     if (apertureSpinBox_ != nullptr) {
-        const double aperture = std::isfinite(scene_.camera.aperture) ? scene_.camera.aperture : 0.35;
+        const double aperture = std::isfinite(scene_.camera.aperture) ? scene_.camera.aperture : 0.0;
         apertureSpinBox_->setValue(std::clamp(aperture, apertureSpinBox_->minimum(), apertureSpinBox_->maximum()));
     }
     if (focusDistanceSpinBox_ != nullptr) {

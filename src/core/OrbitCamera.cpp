@@ -209,7 +209,7 @@ void OrbitCamera::sanitize()
         fov = 45.0;
     }
     if (!finite(aperture)) {
-        aperture = 0.35;
+        aperture = 0.0;
     }
     if (!finite(focusDistance)) {
         focusDistance = distance;

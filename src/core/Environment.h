@@ -23,9 +23,9 @@ class Environment
 {
 public:
     EnvironmentMode mode = EnvironmentMode::Gradient;
-    Vec3 topColor = Vec3(0.12, 0.22, 0.38);
-    Vec3 bottomColor = Vec3(0.78, 0.84, 0.92);
-    Vec3 solidColor = Vec3(0.05, 0.06, 0.08);
+    Vec3 topColor = Vec3(0.30, 0.62, 1.00);
+    Vec3 bottomColor = Vec3(0.82, 0.93, 1.00);
+    Vec3 solidColor = Vec3(0.48, 0.74, 1.00);
     QString imagePath;
     double exposure = 1.0;
     double rotationY = 0.0;

@@ -53,15 +53,11 @@ public:
 
         QImage output(width, height, QImage::Format_RGB32);
         const double strength = settings.safeStrength();
-        const double exposure = settings.safeExposure();
         for (int y = 0; y < height; ++y) {
             QRgb* row = reinterpret_cast<QRgb*>(output.scanLine(y));
             for (int x = 0; x < width; ++x) {
                 const std::size_t index = static_cast<std::size_t>(y * width + x);
                 Vec3 color = scene[index] + blurred[index] * strength;
-                color = Vec3(1.0 - std::exp(-color.x * exposure),
-                             1.0 - std::exp(-color.y * exposure),
-                             1.0 - std::exp(-color.z * exposure));
                 row[x] = vec3ToPixel(color);
             }
         }
