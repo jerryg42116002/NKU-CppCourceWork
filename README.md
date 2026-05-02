@@ -1,11 +1,19 @@
 # TinyRay Studio
 
-TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + OpenGL + CPU Ray Tracing** 的小型计算机图形学桌面工具。它不是游戏，而是用于交互式编辑简单 3D 场景、实时预览、CPU 高质量光线追踪渲染和图像导出的图形应用。
+TinyRay Studio 是一个小型计算机图形学桌面工具，用于交互式编辑简单 3D 场景、实时预览、CPU 高质量光线追踪渲染和图像导出。
+该工具在艺术创作，图形学教学等领域有较大应用潜力
 
 项目采用混合渲染架构：
 
 - **实时视口**：使用 Qt `QOpenGLWidget` 和 OpenGL，用于相机控制、选择、拖拽、材质和灯光快速预览。
 - **高质量渲染**：使用 CPU Ray Tracing，用于最终图片输出，支持递归反射、折射、阴影、软阴影、Bloom 和景深。
+
+技术栈：
+
+- C++17 
+- Qt 6 Widgets
+- OpenGL
+- CPU Ray Tracing
 
 ## 主要功能
 
