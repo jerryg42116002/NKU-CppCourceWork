@@ -2,17 +2,21 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <system_error>
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
@@ -21,6 +25,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSlider>
+#include <QSplitter>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QVariant>
@@ -32,7 +37,9 @@
 #include "core/Cylinder.h"
 #include "core/Sphere.h"
 #include "gui/RealTimeRenderWidget.h"
+#include "gui/RenderWidget.h"
 #include "gui/ScenePanel.h"
+#include "particle/Emitter.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -44,6 +51,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     realTimeRenderWidget_ = new RealTimeRenderWidget(this);
     realTimeRenderWidget_->setScene(scene_);
+    renderWidget_ = new RenderWidget(this);
+    renderWidget_->setVisible(false);
     connect(realTimeRenderWidget_, &RealTimeRenderWidget::objectSelected,
             this, &MainWindow::handleRealTimeObjectSelected);
     connect(realTimeRenderWidget_, &RealTimeRenderWidget::lightSelected,
@@ -52,7 +61,15 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::handleRealTimeObjectMoved);
     connect(realTimeRenderWidget_, &RealTimeRenderWidget::lightMoved,
             this, &MainWindow::handleRealTimeLightMoved);
-    setCentralWidget(realTimeRenderWidget_);
+
+    auto* previewSplitter = new QSplitter(Qt::Horizontal, this);
+    previewSplitter->addWidget(realTimeRenderWidget_);
+    previewSplitter->addWidget(renderWidget_);
+    previewSplitter->setStretchFactor(0, 3);
+    previewSplitter->setStretchFactor(1, 2);
+    previewSplitter->setCollapsible(0, false);
+    previewSplitter->setCollapsible(1, false);
+    setCentralWidget(previewSplitter);
 
     createMenus();
     createControlPanel();
@@ -224,6 +241,18 @@ void MainWindow::createControlPanel()
     turntableTargetModeComboBox_->addItem(QStringLiteral("Custom Target"),
                                           static_cast<int>(tinyray::TurntableTargetMode::CustomTarget));
 
+    apertureSpinBox_ = new QDoubleSpinBox(cameraGroup);
+    apertureSpinBox_->setRange(0.0, 5.0);
+    apertureSpinBox_->setSingleStep(0.05);
+    apertureSpinBox_->setDecimals(2);
+    apertureSpinBox_->setValue(scene_.camera.aperture);
+
+    focusDistanceSpinBox_ = new QDoubleSpinBox(cameraGroup);
+    focusDistanceSpinBox_->setRange(0.05, 500.0);
+    focusDistanceSpinBox_->setSingleStep(0.25);
+    focusDistanceSpinBox_->setDecimals(2);
+    focusDistanceSpinBox_->setValue(scene_.camera.focusDistance);
+
     resetViewButton_ = new QPushButton(QStringLiteral("Reset View"), cameraGroup);
     focusSelectedButton_ = new QPushButton(QStringLiteral("Focus Selected Object"), cameraGroup);
     auto* viewButtonRow = new QWidget(cameraGroup);
@@ -237,7 +266,71 @@ void MainWindow::createControlPanel()
     cameraLayout->addRow(QStringLiteral("Speed"), turntableSpeedRow);
     cameraLayout->addRow(QStringLiteral("Direction"), turntableDirectionComboBox_);
     cameraLayout->addRow(QStringLiteral("Target Mode"), turntableTargetModeComboBox_);
+    cameraLayout->addRow(QStringLiteral("Aperture"), apertureSpinBox_);
+    cameraLayout->addRow(QStringLiteral("Focus Distance"), focusDistanceSpinBox_);
     cameraLayout->addRow(QStringLiteral("View"), viewButtonRow);
+
+    auto* particleGroup = new QGroupBox(QStringLiteral("Particles / Rain"), panel);
+    auto* particleLayout = new QFormLayout(particleGroup);
+    particleLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+    rainEnabledCheckBox_ = new QCheckBox(QStringLiteral("Enable Rain"), particleGroup);
+    rainEnabledCheckBox_->setChecked(false);
+
+    rainRateSpinBox_ = new QDoubleSpinBox(particleGroup);
+    rainRateSpinBox_->setRange(0.0, 1500.0);
+    rainRateSpinBox_->setSingleStep(25.0);
+    rainRateSpinBox_->setDecimals(0);
+    rainRateSpinBox_->setValue(260.0);
+
+    rainDropSpeedSpinBox_ = new QDoubleSpinBox(particleGroup);
+    rainDropSpeedSpinBox_->setRange(1.0, 50.0);
+    rainDropSpeedSpinBox_->setSingleStep(0.5);
+    rainDropSpeedSpinBox_->setDecimals(1);
+    rainDropSpeedSpinBox_->setValue(15.0);
+
+    rainGravitySpinBox_ = new QDoubleSpinBox(particleGroup);
+    rainGravitySpinBox_->setRange(0.0, 80.0);
+    rainGravitySpinBox_->setSingleStep(1.0);
+    rainGravitySpinBox_->setDecimals(1);
+    rainGravitySpinBox_->setValue(18.0);
+
+    rainSpawnAreaSpinBox_ = new QDoubleSpinBox(particleGroup);
+    rainSpawnAreaSpinBox_->setRange(1.0, 40.0);
+    rainSpawnAreaSpinBox_->setSingleStep(0.5);
+    rainSpawnAreaSpinBox_->setDecimals(1);
+    rainSpawnAreaSpinBox_->setValue(7.5);
+
+    splashEnabledCheckBox_ = new QCheckBox(QStringLiteral("Enable Splash"), particleGroup);
+    splashEnabledCheckBox_->setChecked(true);
+
+    splashIntensitySpinBox_ = new QDoubleSpinBox(particleGroup);
+    splashIntensitySpinBox_->setRange(0.0, 3.0);
+    splashIntensitySpinBox_->setSingleStep(0.1);
+    splashIntensitySpinBox_->setDecimals(2);
+    splashIntensitySpinBox_->setValue(1.0);
+
+    rainParticleSizeSpinBox_ = new QDoubleSpinBox(particleGroup);
+    rainParticleSizeSpinBox_->setRange(0.002, 0.080);
+    rainParticleSizeSpinBox_->setSingleStep(0.002);
+    rainParticleSizeSpinBox_->setDecimals(3);
+    rainParticleSizeSpinBox_->setValue(0.012);
+
+    particleLayout->addRow(QStringLiteral("Rain"), rainEnabledCheckBox_);
+    particleLayout->addRow(QStringLiteral("Rain Rate"), rainRateSpinBox_);
+    particleLayout->addRow(QStringLiteral("Drop Speed"), rainDropSpeedSpinBox_);
+
+    rainDropLifetimeSpinBox_ = new QDoubleSpinBox(particleGroup);
+    rainDropLifetimeSpinBox_->setRange(0.10, 4.00);
+    rainDropLifetimeSpinBox_->setSingleStep(0.05);
+    rainDropLifetimeSpinBox_->setDecimals(2);
+    rainDropLifetimeSpinBox_->setValue(0.85);
+    particleLayout->addRow(QStringLiteral("Drop Lifetime"), rainDropLifetimeSpinBox_);
+    particleLayout->addRow(QStringLiteral("Gravity"), rainGravitySpinBox_);
+    particleLayout->addRow(QStringLiteral("Spawn Area Size"), rainSpawnAreaSpinBox_);
+    particleLayout->addRow(QStringLiteral("Splash"), splashEnabledCheckBox_);
+    particleLayout->addRow(QStringLiteral("Splash Intensity"), splashIntensitySpinBox_);
+    particleLayout->addRow(QStringLiteral("Drop Size"), rainParticleSizeSpinBox_);
 
     scenePanel_ = new ScenePanel(panel);
     scenePanel_->setScene(scene_);
@@ -249,6 +342,7 @@ void MainWindow::createControlPanel()
     renderButton_ = new QPushButton(QStringLiteral("High Quality Render"), outputGroup);
     stopButton_ = new QPushButton(QStringLiteral("Stop"), outputGroup);
     saveImageButton_ = new QPushButton(QStringLiteral("Save Image"), outputGroup);
+    toggleRenderPreviewButton_ = new QPushButton(QStringLiteral("Show Result Preview"), outputGroup);
     saveSceneButton_ = new QPushButton(QStringLiteral("Save Scene"), outputGroup);
     loadSceneButton_ = new QPushButton(QStringLiteral("Load Scene"), outputGroup);
     clearButton_ = new QPushButton(QStringLiteral("Clear"), outputGroup);
@@ -256,12 +350,14 @@ void MainWindow::createControlPanel()
     outputLayout->addWidget(renderButton_);
     outputLayout->addWidget(stopButton_);
     outputLayout->addWidget(saveImageButton_);
+    outputLayout->addWidget(toggleRenderPreviewButton_);
     outputLayout->addWidget(saveSceneButton_);
     outputLayout->addWidget(loadSceneButton_);
     outputLayout->addWidget(clearButton_);
 
     panelLayout->addWidget(settingsGroup);
     panelLayout->addWidget(cameraGroup);
+    panelLayout->addWidget(particleGroup);
     panelLayout->addWidget(scenePanel_, 1);
     panelLayout->addWidget(outputGroup);
 
@@ -274,6 +370,7 @@ void MainWindow::createControlPanel()
     connect(renderButton_, &QPushButton::clicked, this, &MainWindow::handleRender);
     connect(stopButton_, &QPushButton::clicked, this, &MainWindow::handleStop);
     connect(saveImageButton_, &QPushButton::clicked, this, &MainWindow::handleSaveImage);
+    connect(toggleRenderPreviewButton_, &QPushButton::clicked, this, &MainWindow::handleToggleRenderPreview);
     connect(saveSceneButton_, &QPushButton::clicked, this, &MainWindow::handleSaveScene);
     connect(loadSceneButton_, &QPushButton::clicked, this, &MainWindow::handleLoadScene);
     connect(clearButton_, &QPushButton::clicked, this, &MainWindow::handleClearImage);
@@ -294,14 +391,29 @@ void MainWindow::createControlPanel()
             this, &MainWindow::handleTurntableDirectionChanged);
     connect(turntableTargetModeComboBox_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::handleTurntableTargetModeChanged);
+    connect(apertureSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::handleDepthOfFieldChanged);
+    connect(focusDistanceSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::handleDepthOfFieldChanged);
     connect(resetViewButton_, &QPushButton::clicked, this, &MainWindow::handleResetView);
     connect(focusSelectedButton_, &QPushButton::clicked, this, &MainWindow::handleFocusSelectedObject);
+    connect(rainEnabledCheckBox_, &QCheckBox::toggled, this, &MainWindow::handleRainSettingsChanged);
+    connect(rainRateSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
+    connect(rainDropSpeedSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
+    connect(rainDropLifetimeSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
+    connect(rainGravitySpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
+    connect(rainSpawnAreaSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
+    connect(splashEnabledCheckBox_, &QCheckBox::toggled, this, &MainWindow::handleRainSettingsChanged);
+    connect(splashIntensitySpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
+    connect(rainParticleSizeSpinBox_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &MainWindow::handleRainSettingsChanged);
 
     setRenderControlsEnabled(true);
     setTurntableControlsRunning(false);
     handleTurntableSpeedChanged(turntableSpeedSlider_->value());
     handleTurntableDirectionChanged(turntableDirectionComboBox_->currentIndex());
     handleTurntableTargetModeChanged(turntableTargetModeComboBox_->currentIndex());
+    handleDepthOfFieldChanged();
+    handleRainSettingsChanged();
 }
 
 void MainWindow::createStatusBar()
@@ -323,6 +435,9 @@ void MainWindow::setRenderControlsEnabled(bool enabled)
 {
     renderButton_->setEnabled(enabled);
     saveImageButton_->setEnabled(true);
+    if (toggleRenderPreviewButton_ != nullptr) {
+        toggleRenderPreviewButton_->setEnabled(true);
+    }
     saveSceneButton_->setEnabled(enabled);
     loadSceneButton_->setEnabled(enabled);
     clearButton_->setEnabled(enabled);
@@ -384,6 +499,10 @@ void MainWindow::handleRender()
     const tinyray::RenderSettings settings = currentRenderSettings();
     const tinyray::Scene scene = scene_;
 
+    highQualityImage_ = QImage();
+    if (renderWidget_ != nullptr) {
+        renderWidget_->clearImage();
+    }
     setRenderControlsEnabled(false);
     QApplication::setOverrideCursor(Qt::WaitCursor);
     statusLabel_->setText(QStringLiteral("High quality rendering | Sample 0/%1 | 0% | 0.0s").arg(settings.samplesPerPixel));
@@ -467,8 +586,30 @@ void MainWindow::handleSaveImage()
 void MainWindow::handleClearImage()
 {
     highQualityImage_ = QImage();
+    if (renderWidget_ != nullptr) {
+        renderWidget_->clearImage();
+    }
     progressBar_->setValue(0);
     statusLabel_->setText(QStringLiteral("Real-time rendering"));
+}
+
+void MainWindow::handleToggleRenderPreview()
+{
+    if (renderWidget_ == nullptr || toggleRenderPreviewButton_ == nullptr) {
+        return;
+    }
+
+    const bool shouldShow = !renderWidget_->isVisible();
+    renderWidget_->setVisible(shouldShow);
+    toggleRenderPreviewButton_->setText(shouldShow
+        ? QStringLiteral("Hide Result Preview")
+        : QStringLiteral("Show Result Preview"));
+
+    if (statusLabel_ != nullptr) {
+        statusLabel_->setText(shouldShow
+            ? QStringLiteral("Result preview shown")
+            : QStringLiteral("Result preview hidden"));
+    }
 }
 
 void MainWindow::handleSaveScene()
@@ -529,7 +670,18 @@ void MainWindow::handleLoadScene()
     realTimeRenderWidget_->setScene(scene_);
     realTimeRenderWidget_->setSelectedObjectId(scene_.selectedObjectId);
     applyRenderSettings(loadedSettings);
+    if (apertureSpinBox_ != nullptr) {
+        const double aperture = std::isfinite(scene_.camera.aperture) ? scene_.camera.aperture : 0.35;
+        apertureSpinBox_->setValue(std::clamp(aperture, apertureSpinBox_->minimum(), apertureSpinBox_->maximum()));
+    }
+    if (focusDistanceSpinBox_ != nullptr) {
+        const double focusDistance = std::isfinite(scene_.camera.focusDistance) ? scene_.camera.focusDistance : 5.0;
+        focusDistanceSpinBox_->setValue(std::clamp(focusDistance, focusDistanceSpinBox_->minimum(), focusDistanceSpinBox_->maximum()));
+    }
     highQualityImage_ = QImage();
+    if (renderWidget_ != nullptr) {
+        renderWidget_->clearImage();
+    }
     progressBar_->setValue(0);
     statusLabel_->setText(QStringLiteral("Scene loaded"));
 }
@@ -560,6 +712,9 @@ void MainWindow::handleSceneChanged(const tinyray::Scene& scene)
     realTimeRenderWidget_->setScene(scene_);
     scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
     highQualityImage_ = QImage();
+    if (renderWidget_ != nullptr) {
+        renderWidget_->clearImage();
+    }
     statusLabel_->setText(QStringLiteral("Scene updated"));
 }
 
@@ -722,9 +877,73 @@ void MainWindow::handleFocusSelectedObject()
         return;
     }
 
+    if (focusDistanceSpinBox_ != nullptr) {
+        const tinyray::OrbitCamera& camera = realTimeRenderWidget_->orbitCamera();
+        const double focusDistance = std::clamp((camera.target - camera.position()).length(),
+                                                focusDistanceSpinBox_->minimum(),
+                                                focusDistanceSpinBox_->maximum());
+        focusDistanceSpinBox_->setValue(focusDistance);
+    }
+
     syncCurrentViewportCameraToScene();
     highQualityImage_ = QImage();
     statusLabel_->setText(QStringLiteral("Focused selected object"));
+}
+
+void MainWindow::handleDepthOfFieldChanged()
+{
+    if (realTimeRenderWidget_ == nullptr
+        || apertureSpinBox_ == nullptr
+        || focusDistanceSpinBox_ == nullptr) {
+        return;
+    }
+
+    scene_.camera.aperture = apertureSpinBox_->value();
+    scene_.camera.focusDistance = focusDistanceSpinBox_->value();
+    realTimeRenderWidget_->setDepthOfField(scene_.camera.aperture, scene_.camera.focusDistance);
+    highQualityImage_ = QImage();
+    if (statusLabel_ != nullptr) {
+        statusLabel_->setText(QStringLiteral("Depth of field updated | visible in High Quality Render"));
+    }
+}
+
+void MainWindow::handleRainSettingsChanged()
+{
+    if (!rainDropLifetimeSpinBox_) {
+        return;
+    }
+
+    if (realTimeRenderWidget_ == nullptr
+        || rainEnabledCheckBox_ == nullptr
+        || rainRateSpinBox_ == nullptr
+        || rainDropSpeedSpinBox_ == nullptr
+        || rainGravitySpinBox_ == nullptr
+        || rainSpawnAreaSpinBox_ == nullptr
+        || splashEnabledCheckBox_ == nullptr
+        || splashIntensitySpinBox_ == nullptr
+        || rainParticleSizeSpinBox_ == nullptr) {
+        return;
+    }
+
+    tinyray::RainSettings settings;
+    settings.rainEnabled = rainEnabledCheckBox_->isChecked();
+    settings.rainRate = rainRateSpinBox_->value();
+    settings.dropSpeed = rainDropSpeedSpinBox_->value();
+    settings.dropLifetime = rainDropLifetimeSpinBox_->value();
+    settings.gravity = rainGravitySpinBox_->value();
+    settings.spawnAreaSize = rainSpawnAreaSpinBox_->value();
+    settings.splashEnabled = splashEnabledCheckBox_->isChecked();
+    settings.splashIntensity = splashIntensitySpinBox_->value();
+    settings.particleSize = rainParticleSizeSpinBox_->value();
+    settings.spawnHeight = std::max(5.0, settings.spawnAreaSize * 0.65);
+    settings.randomness = std::clamp(settings.spawnAreaSize * 0.08, 0.15, 2.5);
+
+    realTimeRenderWidget_->setRainSettings(settings);
+    if (statusLabel_ != nullptr) {
+        statusLabel_->setText(settings.rainEnabled
+                                  ? QStringLiteral("Rain settings updated")
+                                  : QStringLiteral("Rain disabled"));
+    }
 }
 
 void MainWindow::updateRenderProgress(int progress)
@@ -740,6 +959,9 @@ void MainWindow::updateRenderPreview(const QImage& image,
                                      double elapsedSeconds)
 {
     highQualityImage_ = image;
+    if (renderWidget_ != nullptr) {
+        renderWidget_->setImage(image);
+    }
 
     const int clampedProgress = std::clamp(progress, 0, 100);
     progressBar_->setValue(clampedProgress);
@@ -757,6 +979,9 @@ void MainWindow::handleRenderFinished(const QImage& image, bool stopped)
     }
 
     highQualityImage_ = image;
+    if (renderWidget_ != nullptr) {
+        renderWidget_->setImage(image);
+    }
     QApplication::restoreOverrideCursor();
     setRenderControlsEnabled(true);
 

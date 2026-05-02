@@ -17,6 +17,8 @@ constexpr double minDistance = 0.25;
 constexpr double maxDistance = 500.0;
 constexpr double minFov = 5.0;
 constexpr double maxFov = 120.0;
+constexpr double minFocusDistance = 0.05;
+constexpr double maxFocusDistance = 500.0;
 
 bool finite(double value)
 {
@@ -160,7 +162,11 @@ bool OrbitCamera::isValid() const
         && finite(yaw)
         && finite(pitch)
         && finite(fov)
+        && finite(aperture)
+        && finite(focusDistance)
         && distance > minDistance * 0.5
+        && aperture >= 0.0
+        && focusDistance > 0.0
         && !forwardDirection().nearZero();
 }
 
@@ -202,6 +208,12 @@ void OrbitCamera::sanitize()
     if (!finite(fov)) {
         fov = 45.0;
     }
+    if (!finite(aperture)) {
+        aperture = 0.35;
+    }
+    if (!finite(focusDistance)) {
+        focusDistance = distance;
+    }
     if (!finite(turntableSpeed)) {
         turntableSpeed = 24.0;
     }
@@ -213,6 +225,8 @@ void OrbitCamera::sanitize()
     yaw = wrapDegrees(yaw);
     pitch = std::clamp(pitch, minPitch, maxPitch);
     fov = std::clamp(fov, minFov, maxFov);
+    aperture = std::clamp(aperture, 0.0, 5.0);
+    focusDistance = std::clamp(focusDistance, minFocusDistance, maxFocusDistance);
     turntableSpeed = std::clamp(turntableSpeed, 0.0, 360.0);
 }
 

@@ -21,6 +21,8 @@
 #include "interaction/Picking.h"
 #include "interaction/OverlayProjector.h"
 #include "gui/MainWindow.h"
+#include "particle/Emitter.h"
+#include "particle/ParticleSystem.h"
 
 namespace {
 
@@ -52,6 +54,22 @@ int runSelfTest()
     camera.pan(120.0, -80.0);
     if (!camera.isValid() || !finite(camera.target) || !finite(camera.position())) {
         std::cerr << "OrbitCamera became invalid after pan.\n";
+        return 1;
+    }
+
+    tinyray::Camera dofCamera;
+    dofCamera.focusDistance = 4.0;
+    dofCamera.aperture = 0.0;
+    const tinyray::Ray pinholeRay = dofCamera.generateRay(0.5, 0.5);
+    dofCamera.aperture = 0.35;
+    const tinyray::Ray dofRay = dofCamera.generateRay(0.5, 0.5, 0.25, 0.0);
+    if (!finite(pinholeRay.origin)
+        || !finite(pinholeRay.direction)
+        || !finite(dofRay.origin)
+        || !finite(dofRay.direction)
+        || dofRay.direction.nearZero()
+        || (dofRay.origin - pinholeRay.origin).nearZero()) {
+        std::cerr << "Depth-of-field camera ray generation is invalid.\n";
         return 1;
     }
 
@@ -116,6 +134,104 @@ int runSelfTest()
         || std::abs(selectedTarget.z - selectedCenter.z) > 1.0e-9) {
         std::cerr << "Turntable target mode did not safely resolve selected-object fallback.\n";
         return 1;
+    }
+
+    tinyray::Particle defaultParticle;
+    if (defaultParticle.alive
+        || !defaultParticle.isFinite()
+        || defaultParticle.lifetime <= 0.0
+        || defaultParticle.normalizedAge() != 0.0) {
+        std::cerr << "Default particle state is invalid.\n";
+        return 1;
+    }
+
+    tinyray::ParticleSystem particleSystem(64);
+    tinyray::Particle movingParticle;
+    movingParticle.alive = true;
+    movingParticle.position = tinyray::Vec3(0.0, 2.0, 0.0);
+    movingParticle.velocity = tinyray::Vec3(0.0, -1.0, 0.0);
+    movingParticle.acceleration = tinyray::Vec3(0.0, -1.0, 0.0);
+    movingParticle.lifetime = 1.0;
+    movingParticle.size = 0.02;
+    if (!particleSystem.addParticle(movingParticle) || particleSystem.particleCount() != 1) {
+        std::cerr << "Particle system did not accept a valid particle.\n";
+        return 1;
+    }
+
+    particleSystem.update(0.25);
+    if (particleSystem.particleCount() != 1
+        || particleSystem.particles().front().age <= 0.0
+        || particleSystem.particles().front().position.y >= 2.0
+        || !particleSystem.particles().front().isFinite()) {
+        std::cerr << "Particle update did not advance age and position safely.\n";
+        return 1;
+    }
+
+    particleSystem.update(1.0);
+    if (!particleSystem.empty()) {
+        std::cerr << "Expired particle was not removed.\n";
+        return 1;
+    }
+
+    tinyray::RainSettings rainSettings;
+    rainSettings.rainEnabled = true;
+    rainSettings.rainRate = 120.0;
+    rainSettings.dropSpeed = 10.0;
+    rainSettings.gravity = 0.0;
+    rainSettings.spawnAreaSize = 2.0;
+    rainSettings.spawnHeight = 2.0;
+    rainSettings.particleSize = 0.02;
+
+    tinyray::RainEmitter rainEmitter;
+    rainEmitter.setSettings(rainSettings);
+    for (int frame = 0; frame < 10; ++frame) {
+        rainEmitter.emitParticles(particleSystem, 0.05);
+    }
+    if (particleSystem.particleCount() < 50
+        || particleSystem.particleCount() > 70
+        || !particleSystem.particles().front().isFinite()) {
+        std::cerr << "Rain emitter generated an unreasonable particle count.\n";
+        return 1;
+    }
+
+    particleSystem.update(0.1);
+    bool rainMovedDown = false;
+    for (const tinyray::Particle& particle : particleSystem.particles()) {
+        if (!particle.isFinite()) {
+            std::cerr << "Rain particle produced invalid values.\n";
+            return 1;
+        }
+        rainMovedDown = rainMovedDown || particle.position.y < rainSettings.spawnHeight;
+    }
+    if (!rainMovedDown) {
+        std::cerr << "Rain particles did not move downward.\n";
+        return 1;
+    }
+
+    bool splashTriggered = false;
+    tinyray::SplashEmitter splashEmitter;
+    splashEmitter.setEnabled(true);
+    splashEmitter.setIntensity(1.0);
+    splashEmitter.setParticleSize(0.02);
+    splashEmitter.setGravity(18.0);
+    particleSystem.handleRainCollisions(
+        [](const tinyray::Particle&, tinyray::Vec3& impactPoint) {
+            impactPoint = tinyray::Vec3(0.0, 0.0, 0.0);
+            return true;
+        },
+        [&](const tinyray::Vec3& impactPoint) {
+            splashTriggered = true;
+            splashEmitter.emitSplash(particleSystem, impactPoint);
+        });
+    if (!splashTriggered || particleSystem.empty()) {
+        std::cerr << "Splash trigger did not create secondary particles.\n";
+        return 1;
+    }
+    for (const tinyray::Particle& particle : particleSystem.particles()) {
+        if (particle.type != tinyray::ParticleType::Splash || !particle.isFinite()) {
+            std::cerr << "Splash particle state is invalid.\n";
+            return 1;
+        }
     }
 
     tinyray::OrbitCamera overlayCamera;

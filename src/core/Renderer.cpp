@@ -135,7 +135,7 @@ QImage Renderer::render(const Scene& scene, const RenderSettings& settings,
 
             const double u = (static_cast<double>(x) + random.real()) / static_cast<double>(width);
             const double v = 1.0 - (static_cast<double>(y) + random.real()) / static_cast<double>(height);
-            const Ray ray = camera.generateRay(u, v);
+            const Ray ray = camera.generateRay(u, v, random.real(), random.real());
 
             const int pixelIndex = y * width + x;
             accumulatedColors[static_cast<std::size_t>(pixelIndex)] += rayTracer.trace(ray, scene, maxDepth);

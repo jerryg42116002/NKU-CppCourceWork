@@ -224,6 +224,8 @@ bool SceneIO::saveToFile(const Scene& scene,
     camera["up"] = vecToJson(scene.camera.up);
     camera["fov"] = scene.camera.fieldOfViewYDegrees;
     camera["aspectRatio"] = scene.camera.aspectRatio;
+    camera["aperture"] = scene.camera.aperture;
+    camera["focusDistance"] = scene.camera.focusDistance;
     root["camera"] = camera;
     root["selectedObjectId"] = scene.selectedObjectId;
     root["environment"] = environmentToJson(scene.environment);
@@ -337,6 +339,8 @@ bool SceneIO::loadFromFile(const QString& fileName,
     loadedScene.camera.up = vecFromJson(camera.value("up").toObject(), loadedScene.camera.up);
     loadedScene.camera.fieldOfViewYDegrees = camera.value("fov").toDouble(loadedScene.camera.fieldOfViewYDegrees);
     loadedScene.camera.aspectRatio = camera.value("aspectRatio").toDouble(loadedScene.camera.aspectRatio);
+    loadedScene.camera.aperture = camera.value("aperture").toDouble(loadedScene.camera.aperture);
+    loadedScene.camera.focusDistance = camera.value("focusDistance").toDouble(loadedScene.camera.focusDistance);
     loadedScene.selectedObjectId = root.value("selectedObjectId").toInt(-1);
     loadedScene.environment = environmentFromJson(root.value("environment").toObject());
     loadedScene.softShadowsEnabled = root.value("softShadowsEnabled").toBool(loadedScene.softShadowsEnabled);

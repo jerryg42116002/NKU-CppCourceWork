@@ -11,6 +11,8 @@
 #include "interaction/DragMode.h"
 
 class QComboBox;
+class QCheckBox;
+class QDoubleSpinBox;
 class QPushButton;
 class QLabel;
 class QProgressBar;
@@ -18,6 +20,7 @@ class QSlider;
 class QSpinBox;
 
 class RealTimeRenderWidget;
+class RenderWidget;
 class ScenePanel;
 
 class MainWindow : public QMainWindow
@@ -57,6 +60,7 @@ private slots:
     void handleStop();
     void handleSaveImage();
     void handleClearImage();
+    void handleToggleRenderPreview();
     void handleSaveScene();
     void handleLoadScene();
     void handleAbout();
@@ -75,9 +79,12 @@ private slots:
     void handleTurntableTargetModeChanged(int index);
     void handleResetView();
     void handleFocusSelectedObject();
+    void handleDepthOfFieldChanged();
+    void handleRainSettingsChanged();
 
 private:
     RealTimeRenderWidget* realTimeRenderWidget_ = nullptr;
+    RenderWidget* renderWidget_ = nullptr;
     ScenePanel* scenePanel_ = nullptr;
 
     QSpinBox* widthSpinBox_ = nullptr;
@@ -90,10 +97,22 @@ private:
     QLabel* turntableSpeedValueLabel_ = nullptr;
     QComboBox* turntableDirectionComboBox_ = nullptr;
     QComboBox* turntableTargetModeComboBox_ = nullptr;
+    QDoubleSpinBox* apertureSpinBox_ = nullptr;
+    QDoubleSpinBox* focusDistanceSpinBox_ = nullptr;
+    QCheckBox* rainEnabledCheckBox_ = nullptr;
+    QDoubleSpinBox* rainRateSpinBox_ = nullptr;
+    QDoubleSpinBox* rainDropSpeedSpinBox_ = nullptr;
+    QDoubleSpinBox* rainDropLifetimeSpinBox_ = nullptr;
+    QDoubleSpinBox* rainGravitySpinBox_ = nullptr;
+    QDoubleSpinBox* rainSpawnAreaSpinBox_ = nullptr;
+    QCheckBox* splashEnabledCheckBox_ = nullptr;
+    QDoubleSpinBox* splashIntensitySpinBox_ = nullptr;
+    QDoubleSpinBox* rainParticleSizeSpinBox_ = nullptr;
 
     QPushButton* renderButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
     QPushButton* saveImageButton_ = nullptr;
+    QPushButton* toggleRenderPreviewButton_ = nullptr;
     QPushButton* saveSceneButton_ = nullptr;
     QPushButton* loadSceneButton_ = nullptr;
     QPushButton* clearButton_ = nullptr;

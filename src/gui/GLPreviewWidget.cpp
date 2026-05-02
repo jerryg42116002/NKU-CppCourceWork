@@ -237,6 +237,12 @@ void GLPreviewWidget::setScene(const tinyray::Scene& scene)
 {
     scene_ = scene;
     selectedObjectId_ = scene_.selectedObjectId;
+    camera_.aperture = std::isfinite(scene_.camera.aperture)
+        ? std::clamp(scene_.camera.aperture, 0.0, 5.0)
+        : 0.35;
+    camera_.focusDistance = std::isfinite(scene_.camera.focusDistance)
+        ? std::clamp(scene_.camera.focusDistance, 0.05, 500.0)
+        : std::max(camera_.distance, 0.05);
     if (selectedLightIndex_ >= static_cast<int>(scene_.lights.size())) {
         selectedLightIndex_ = -1;
     }
@@ -320,6 +326,16 @@ void GLPreviewWidget::setTurntableCustomTarget(const tinyray::Vec3& target)
     }
 }
 
+void GLPreviewWidget::setDepthOfField(double aperture, double focusDistance)
+{
+    camera_.aperture = std::isfinite(aperture) ? std::clamp(aperture, 0.0, 5.0) : 0.0;
+    camera_.focusDistance = std::isfinite(focusDistance)
+        ? std::clamp(focusDistance, 0.05, 500.0)
+        : std::max(camera_.distance, 0.05);
+    resetPathTraceAccumulation();
+    update();
+}
+
 void GLPreviewWidget::advanceTurntable(double deltaTimeSeconds)
 {
     if (!camera_.turntableEnabled) {
@@ -335,7 +351,11 @@ void GLPreviewWidget::advanceTurntable(double deltaTimeSeconds)
 
 void GLPreviewWidget::resetView()
 {
+    const double aperture = camera_.aperture;
+    const double focusDistance = camera_.focusDistance;
     camera_ = tinyray::OrbitCamera();
+    camera_.aperture = aperture;
+    camera_.focusDistance = focusDistance;
     camera_.target = sceneCenter();
     camera_.turntableCustomTarget = camera_.target;
     resetPathTraceAccumulation();
@@ -364,6 +384,8 @@ tinyray::Camera GLPreviewWidget::currentCameraSnapshot() const
     camera.lookAt = camera_.target;
     camera.up = camera_.up;
     camera.fieldOfViewYDegrees = camera_.fov;
+    camera.aperture = camera_.aperture;
+    camera.focusDistance = camera_.focusDistance;
     camera.aspectRatio = bufferSize.height() > 0
         ? static_cast<double>(bufferSize.width()) / static_cast<double>(bufferSize.height())
         : camera.aspectRatio;
@@ -414,7 +436,28 @@ void GLPreviewWidget::paintGL()
     setupCameraMatrices();
     setupLights();
     drawScene();
+    drawRealtimeOverlay();
+    drawTransformGizmo();
     drawOverlayLabels();
+}
+
+void GLPreviewWidget::drawRealtimeOverlay()
+{
+}
+
+const tinyray::Scene& GLPreviewWidget::previewScene() const
+{
+    return scene_;
+}
+
+const tinyray::OrbitCamera& GLPreviewWidget::previewCamera() const
+{
+    return camera_;
+}
+
+void GLPreviewWidget::invalidateRealtimeAccumulation()
+{
+    resetPathTraceAccumulation();
 }
 
 void GLPreviewWidget::mousePressEvent(QMouseEvent* event)
@@ -422,6 +465,10 @@ void GLPreviewWidget::mousePressEvent(QMouseEvent* event)
     pressMousePosition_ = event->position().toPoint();
     lastMousePosition_ = pressMousePosition_;
     if (event->button() == Qt::LeftButton) {
+        if (beginGizmoDrag(pressMousePosition_)) {
+            dragMode_ = DragMode::None;
+            return;
+        }
         if (beginObjectDrag(pressMousePosition_)) {
             dragMode_ = DragMode::None;
             return;
@@ -1151,6 +1198,8 @@ void GLPreviewWidget::renderPathTracedScene()
     uploadPathTraceScene(*pathTraceProgram_);
     drawFullScreenTriangle(*pathTraceProgram_);
     pathTraceProgram_->release();
+    setupCameraMatrices();
+    drawRealtimeOverlay();
     writeBuffer->release();
 
     glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
@@ -1177,6 +1226,7 @@ void GLPreviewWidget::renderPathTracedScene()
 
     setupCameraMatrices();
     drawLightMarkersOverlay();
+    drawTransformGizmo();
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -1199,6 +1249,64 @@ void GLPreviewWidget::drawLightMarkersOverlay()
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+}
+
+void GLPreviewWidget::drawTransformGizmo()
+{
+    tinyray::Vec3 center;
+    if (!gizmoCenter(center)) {
+        return;
+    }
+
+    const double cameraDistance = std::max((center - camera_.position()).length(), 1.0);
+    const double axisLength = std::clamp(cameraDistance * 0.18, 0.55, 2.2);
+    struct AxisItem {
+        GizmoAxis axis;
+        tinyray::Vec3 direction;
+        double red;
+        double green;
+        double blue;
+    };
+    const AxisItem axes[] = {
+        {GizmoAxis::X, tinyray::Vec3(1.0, 0.0, 0.0), 1.0, 0.12, 0.10},
+        {GizmoAxis::Y, tinyray::Vec3(0.0, 1.0, 0.0), 0.22, 0.92, 0.22},
+        {GizmoAxis::Z, tinyray::Vec3(0.0, 0.0, 1.0), 0.18, 0.36, 1.0}
+    };
+
+    glDisable(GL_LIGHTING);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+
+    glLineWidth(4.0f);
+    glBegin(GL_LINES);
+    for (const AxisItem& item : axes) {
+        const bool active = activeGizmoAxis_ == item.axis;
+        glColor3d(active ? 1.0 : item.red,
+                  active ? 0.92 : item.green,
+                  active ? 0.18 : item.blue);
+        const tinyray::Vec3 end = center + item.direction * axisLength;
+        glVertex3d(center.x, center.y, center.z);
+        glVertex3d(end.x, end.y, end.z);
+    }
+    glEnd();
+
+    glPointSize(11.0f);
+    glBegin(GL_POINTS);
+    for (const AxisItem& item : axes) {
+        const bool active = activeGizmoAxis_ == item.axis;
+        glColor3d(active ? 1.0 : item.red,
+                  active ? 0.92 : item.green,
+                  active ? 0.18 : item.blue);
+        const tinyray::Vec3 end = center + item.direction * axisLength;
+        glVertex3d(end.x, end.y, end.z);
+    }
+    glEnd();
+
+    glLineWidth(1.0f);
+    glPointSize(1.0f);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_LIGHTING);
 }
 
 void GLPreviewWidget::drawOverlayLabels()
@@ -1819,9 +1927,7 @@ bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
         tinyray::Vec3 lightCenter = scene_.lights[static_cast<std::size_t>(lightIndex)].position;
         dragStartObjectCenter_ = lightCenter;
         tinyray::Vec3 dragPoint;
-        if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
-            || objectDragMode_ == tinyray::ObjectDragMode::AxisY
-            || objectDragMode_ == tinyray::ObjectDragMode::AxisZ) {
+        if (isAxisDragActive()) {
             dragPoint = lightCenter;
         } else if (!rayIntersectsDragPlane(ray, dragPoint)) {
             dragPoint = lightCenter;
@@ -1856,9 +1962,7 @@ bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
 
     dragStartObjectCenter_ = objectCenter;
     tinyray::Vec3 groundPoint;
-    if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
-        || objectDragMode_ == tinyray::ObjectDragMode::AxisY
-        || objectDragMode_ == tinyray::ObjectDragMode::AxisZ) {
+    if (isAxisDragActive()) {
         groundPoint = objectCenter;
     } else if (!rayIntersectsDragPlane(ray, groundPoint)) {
         return false;
@@ -1879,6 +1983,48 @@ bool GLPreviewWidget::beginObjectDrag(const QPoint& screenPosition)
     return true;
 }
 
+bool GLPreviewWidget::beginGizmoDrag(const QPoint& screenPosition)
+{
+    const GizmoAxis pickedAxis = pickGizmoAxis(screenPosition);
+    if (pickedAxis == GizmoAxis::None) {
+        return false;
+    }
+
+    tinyray::Vec3 center;
+    if (!gizmoCenter(center)) {
+        return false;
+    }
+
+    activeGizmoAxis_ = pickedAxis;
+    dragStartObjectCenter_ = center;
+    dragStartGroundPoint_ = center;
+    dragOffset_ = tinyray::Vec3(0.0, 0.0, 0.0);
+
+    if (selectedLightIndex_ >= 0 && selectedLightIndex_ < static_cast<int>(scene_.lights.size())) {
+        draggedLightIndex_ = selectedLightIndex_;
+        draggedObjectId_ = -1;
+        isDraggingLight_ = true;
+        isDraggingObject_ = false;
+        scene_.selectedObjectId = -1;
+        emit lightSelected(selectedLightIndex_);
+    } else if (selectedObjectId_ >= 0 && draggableObjectCenter(selectedObjectId_, center)) {
+        draggedObjectId_ = selectedObjectId_;
+        draggedLightIndex_ = -1;
+        isDraggingObject_ = true;
+        isDraggingLight_ = false;
+        scene_.selectedObjectId = selectedObjectId_;
+        emit objectSelected(selectedObjectId_);
+    } else {
+        activeGizmoAxis_ = GizmoAxis::None;
+        return false;
+    }
+
+    emit interactionStatusChanged(QStringLiteral("Transform gizmo dragging"));
+    resetPathTraceAccumulation();
+    update();
+    return true;
+}
+
 void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
 {
     if (isDraggingLight_) {
@@ -1888,9 +2034,7 @@ void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
         }
 
         tinyray::Vec3 newCenter;
-        if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
-            || objectDragMode_ == tinyray::ObjectDragMode::AxisY
-            || objectDragMode_ == tinyray::ObjectDragMode::AxisZ) {
+        if (isAxisDragActive()) {
             newCenter = axisDragCenter(screenPosition);
         } else {
             tinyray::Vec3 groundPoint;
@@ -1925,9 +2069,7 @@ void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
     }
 
     tinyray::Vec3 newCenter;
-    if (objectDragMode_ == tinyray::ObjectDragMode::AxisX
-        || objectDragMode_ == tinyray::ObjectDragMode::AxisY
-        || objectDragMode_ == tinyray::ObjectDragMode::AxisZ) {
+    if (isAxisDragActive()) {
         newCenter = axisDragCenter(screenPosition);
     } else {
         tinyray::Vec3 groundPoint;
@@ -1957,6 +2099,7 @@ void GLPreviewWidget::finishObjectDrag()
     isDraggingLight_ = false;
     draggedObjectId_ = -1;
     draggedLightIndex_ = -1;
+    activeGizmoAxis_ = GizmoAxis::None;
 }
 
 void GLPreviewWidget::pauseTurntableForUserInput()
@@ -2095,6 +2238,91 @@ bool GLPreviewWidget::setDraggableObjectCenter(int objectId, const tinyray::Vec3
     return false;
 }
 
+bool GLPreviewWidget::gizmoCenter(tinyray::Vec3& center) const
+{
+    if (selectedLightIndex_ >= 0 && selectedLightIndex_ < static_cast<int>(scene_.lights.size())) {
+        center = scene_.lights[static_cast<std::size_t>(selectedLightIndex_)].position;
+        return std::isfinite(center.x) && std::isfinite(center.y) && std::isfinite(center.z);
+    }
+
+    return selectedObjectId_ >= 0 && draggableObjectCenter(selectedObjectId_, center);
+}
+
+GLPreviewWidget::GizmoAxis GLPreviewWidget::pickGizmoAxis(const QPoint& screenPosition) const
+{
+    tinyray::Vec3 center;
+    if (!gizmoCenter(center)) {
+        return GizmoAxis::None;
+    }
+
+    const tinyray::ScreenProjection centerProjection = tinyray::worldToScreen(center, size(), camera_);
+    if (!centerProjection.visible) {
+        return GizmoAxis::None;
+    }
+
+    const double cameraDistance = std::max((center - camera_.position()).length(), 1.0);
+    const double axisLength = std::clamp(cameraDistance * 0.18, 0.55, 2.2);
+    const QPointF cursor(static_cast<qreal>(screenPosition.x()), static_cast<qreal>(screenPosition.y()));
+
+    auto distanceToSegment = [](const QPointF& point, const QPointF& start, const QPointF& end) {
+        const double vx = end.x() - start.x();
+        const double vy = end.y() - start.y();
+        const double lengthSquared = vx * vx + vy * vy;
+        if (lengthSquared <= 1.0e-8) {
+            const double dx = point.x() - start.x();
+            const double dy = point.y() - start.y();
+            return std::sqrt(dx * dx + dy * dy);
+        }
+
+        const double wx = point.x() - start.x();
+        const double wy = point.y() - start.y();
+        const double t = std::clamp((wx * vx + wy * vy) / lengthSquared, 0.0, 1.0);
+        const double closestX = start.x() + vx * t;
+        const double closestY = start.y() + vy * t;
+        const double dx = point.x() - closestX;
+        const double dy = point.y() - closestY;
+        return std::sqrt(dx * dx + dy * dy);
+    };
+
+    GizmoAxis bestAxis = GizmoAxis::None;
+    double bestDistance = 13.0;
+    const GizmoAxis axes[] = {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z};
+    for (const GizmoAxis axis : axes) {
+        const tinyray::Vec3 end = center + gizmoAxisVector(axis) * axisLength;
+        const tinyray::ScreenProjection endProjection = tinyray::worldToScreen(end, size(), camera_);
+        if (!endProjection.visible) {
+            continue;
+        }
+
+        const double distance = distanceToSegment(cursor, centerProjection.position, endProjection.position);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestAxis = axis;
+        }
+    }
+
+    return bestAxis;
+}
+
+bool GLPreviewWidget::isAxisDragActive() const
+{
+    return activeGizmoAxis_ != GizmoAxis::None
+        || objectDragMode_ == tinyray::ObjectDragMode::AxisX
+        || objectDragMode_ == tinyray::ObjectDragMode::AxisY
+        || objectDragMode_ == tinyray::ObjectDragMode::AxisZ;
+}
+
+tinyray::Vec3 GLPreviewWidget::gizmoAxisVector(GizmoAxis axis) const
+{
+    if (axis == GizmoAxis::Y) {
+        return tinyray::Vec3(0.0, 1.0, 0.0);
+    }
+    if (axis == GizmoAxis::Z) {
+        return tinyray::Vec3(0.0, 0.0, 1.0);
+    }
+    return tinyray::Vec3(1.0, 0.0, 0.0);
+}
+
 bool GLPreviewWidget::rayIntersectsDragPlane(const tinyray::Ray& ray, tinyray::Vec3& hitPoint) const
 {
     constexpr double epsilon = 1.0e-8;
@@ -2159,6 +2387,9 @@ tinyray::Vec3 GLPreviewWidget::axisDragCenter(const QPoint& screenPosition) cons
 
 tinyray::Vec3 GLPreviewWidget::dragAxisVector() const
 {
+    if (activeGizmoAxis_ != GizmoAxis::None) {
+        return gizmoAxisVector(activeGizmoAxis_);
+    }
     if (objectDragMode_ == tinyray::ObjectDragMode::AxisY) {
         return tinyray::Vec3(0.0, 1.0, 0.0);
     }

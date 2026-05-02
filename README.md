@@ -1,68 +1,84 @@
 # TinyRay Studio
 
-TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + CMake** 的计算机图形学桌面工具。项目采用“单一实时渲染视口 + 可选 CPU Ray Tracing 高质量渲染”的混合架构：中央视口用于即时观察、选择、拖动物体和光源；CPU 光线追踪用于生成最终高质量图片。
+TinyRay Studio 是一个基于 **C++17 + Qt 6 Widgets + OpenGL + CPU Ray Tracing** 的小型计算机图形学桌面工具。它不是游戏，而是用于交互式编辑简单 3D 场景、实时预览、CPU 高质量光线追踪渲染和图像导出的图形应用。
 
-它不是游戏，而是一个用于展示和实验基础图形学算法的小型图形工具。
+项目采用混合渲染架构：
 
-## 当前功能
+- **实时视口**：使用 Qt `QOpenGLWidget` 和 OpenGL，用于相机控制、选择、拖拽、材质和灯光快速预览。
+- **高质量渲染**：使用 CPU Ray Tracing，用于最终图片输出，支持递归反射、折射、阴影、软阴影、Bloom 和景深。
 
-- Qt 6 Widgets 主窗口和右侧参数面板
-- 中央实时渲染视口 `RealTimeRenderWidget`
-- OpenGL / GLSL 实时渲染当前场景
-- Orbit Camera 视角控制：
+## 主要功能
+
+- Qt 6 Widgets 主窗口和右侧控制面板
+- 实时 OpenGL 视口
+- CPU Ray Tracing 高质量渲染
+- 默认隐藏的 High Quality Render 结果预览，可用 `Show Result Preview` 动态展开
+- Orbit Camera 鼠标交互：
   - 左键拖动空白区域旋转视角
   - 右键拖动平移视角
   - 鼠标滚轮缩放
-- Turntable 相机自动旋转：
+- Turntable 自动环绕相机：
   - Start / Stop Turntable
-  - 旋转速度调节
-  - Clockwise / Counterclockwise 方向切换
-  - 围绕场景中心或选中物体旋转
-  - 鼠标交互时自动暂停
-- 场景对象点击选中
-- Sphere / Box / Cylinder / Point Light / Area Light 拖拽移动
-- 拖拽轴模式切换
-- Scene Panel 对象列表和 Inspector 属性编辑
+  - 速度调节
+  - Clockwise / Counterclockwise 方向
+  - Scene Center / Selected Object / Custom Target
+  - 用户手动交互时自动暂停
+- Depth of Field 景深：
+  - `Aperture`
+  - `Focus Distance`
+  - `Focus Selected Object` 可快速设置焦点距离
+  - 景深主要体现在 `High Quality Render` 的 CPU 渲染结果中
+- Transform Gizmo：
+  - 选中物体或光源后显示红 X、绿 Y、蓝 Z 坐标轴
+  - 拖动坐标轴可沿 X/Y/Z 移动物体或光源
+- 对象和光源选择、拖拽
 - Overlay Label 选中信息显示
-- Reset View / Focus Selected Object 视角辅助
-- 支持对象：
+- Reset View / Focus Selected Object
+- 支持几何体：
   - Sphere
   - Plane
   - Box
   - Cylinder
 - 支持光源：
-  - Point Light 点光源
-  - Area Light 矩形面光源
+  - Point Light
+  - Area Light
 - 支持材质：
-  - Diffuse 漫反射
-  - Metal 金属反射
-  - Glass / Dielectric 玻璃折射
-  - Emissive 自发光材质
+  - Diffuse
+  - Metal
+  - Glass / Dielectric
+  - Emissive
 - 支持纹理：
-  - Checkerboard 棋盘格
-  - Image Texture 图片纹理
+  - Checkerboard
+  - Image Texture
 - 支持环境背景：
-  - Gradient 渐变背景
-  - Solid Color 纯色背景
-  - Image / HDR Image 环境贴图路径
+  - Gradient
+  - Solid Color
+  - Image / HDR Image 路径
 - 后处理：
-  - Bloom 泛光
-  - Exposure 曝光控制
-- CPU Ray Tracing 高质量渲染：
-  - 相机射线生成
-  - Sphere / Plane / Box / Cylinder 求交
-  - Point Light 硬阴影
-  - Area Light 多采样软阴影
-  - Lambert 漫反射
-  - Metal 递归反射
-  - Glass 折射、全反射和 Schlick 近似
-  - Emissive 自发光命中
-  - 多重采样抗锯齿
-  - gamma correction
-  - 多线程渲染
-  - 渐进式图像更新
-  - Stop 取消渲染
-- PNG 图片导出
+  - Bloom
+  - Exposure
+- 粒子雨效：
+  - 默认关闭
+  - 可手动开启 Rain
+  - 可调 Rain Rate、Drop Speed、Drop Lifetime、Drop Size、Gravity、Spawn Area
+  - Splash 水花效果
+- CPU Ray Tracing：
+  - Ray generation
+  - Sphere / Plane / Box / Cylinder intersection
+  - Lambert diffuse
+  - Shadow rays
+  - Point Light hard shadow
+  - Area Light soft shadow
+  - Metal recursive reflection
+  - Glass refraction and total internal reflection
+  - Emissive hit lighting
+  - Depth of Field
+  - Anti-aliasing
+  - Gamma correction
+  - Multi-threaded rendering
+  - Progressive preview
+  - Render cancellation
+- PNG 图像导出
 - JSON 场景保存和加载
 - `--self-test` 非 GUI 自检入口
 
@@ -96,129 +112,86 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.11.0\msvc2022_64"
 cmake --build build --config Release
 ```
 
-如果你的 Qt 安装路径不同，请把 `CMAKE_PREFIX_PATH` 改成自己的 Qt Kit 路径。
+如果你的 Qt 安装路径不同，请把 `CMAKE_PREFIX_PATH` 改为本机 Qt Kit 目录，例如该目录下应能找到：
+
+```text
+lib\cmake\Qt6\Qt6Config.cmake
+```
 
 ## 部署 Qt DLL
 
-如果双击运行时提示缺少 Qt DLL，可以执行：
+如果双击运行时提示缺少 Qt DLL，可执行：
 
 ```powershell
 C:\Qt\6.11.0\msvc2022_64\bin\windeployqt.exe D:\NKUcpp大作业\build\Release\TinyRayStudio.exe
 ```
 
-如果看到 `dxcompiler.dll` 或 `VCINSTALLDIR` 相关 warning，一般可以先忽略；TinyRay Studio 不依赖 DirectX 渲染管线。
+如果看到 `dxcompiler.dll` 或 `VCINSTALLDIR` 相关 warning，通常可以先忽略。TinyRay Studio 使用 Qt Widgets 和 OpenGL，不依赖 DirectX 渲染管线。
 
-## 使用方法
+## 基本使用
 
 1. 启动 `TinyRayStudio.exe`。
-2. 在中央实时视口中观察当前场景。
-3. 使用鼠标控制视角：
+2. 在左侧实时视口观察和编辑场景。
+3. 使用鼠标控制相机：
    - 左键拖动空白区域旋转
    - 右键拖动平移
    - 滚轮缩放
-4. 点击对象或光源进行选中。
-5. 拖动物体、点光源或面光源，实时查看场景变化。
-6. 使用 `Start Turntable` 让相机自动围绕场景中心或选中物体旋转；使用 `Stop Turntable` 停止。
-7. 在右侧 Inspector 中修改对象位置、尺寸、材质、纹理、光源、环境和后处理参数。
-8. 点击 `High Quality Render` 使用 CPU Ray Tracing 生成最终图片。
+4. 点击物体或光源进行选择。
+5. 选中后可拖动物体、光源，或拖动红绿蓝 Transform Gizmo 坐标轴进行精确方向移动。
+6. 右侧 `Camera` 面板可控制 Turntable、景深、Reset View 和 Focus Selected Object。
+7. 点击 `High Quality Render` 启动 CPU 光线追踪。
+8. 默认不显示结果预览；点击 `Show Result Preview` 可展开右侧高质量渲染预览。
 9. 点击 `Save Image` 导出 PNG。
 10. 使用 `Save Scene` / `Load Scene` 保存和加载 JSON 场景。
 
 更完整的操作说明见 [USER_GUIDE.md](USER_GUIDE.md)。
 
-## Turntable 相机动画
+## 景深 Depth of Field
 
-Turntable 用于演示和录屏答辩时的自动环绕视角。右侧 `Camera` 面板提供：
+景深参数位于右侧 `Camera` 面板：
 
-- `Start Turntable`：开始自动旋转
-- `Stop Turntable`：停止自动旋转
-- `Speed`：旋转速度，单位为 degrees / second
-- `Direction`：`Clockwise` 或 `Counterclockwise`
-- `Target Mode`：
-  - `Scene Center`：围绕当前场景中心旋转
-  - `Selected Object`：围绕当前选中物体旋转；没有选中物体时回退到场景中心
-  - `Custom Target`：保留当前相机目标作为自定义目标
-- `Reset View`：恢复默认实时视角
-- `Focus Selected Object`：将相机目标切到当前选中物体
+- `Aperture`：孔径。`0` 表示关闭景深，数值越大虚化越明显。
+- `Focus Distance`：焦点距离。焦点附近清晰，焦点前后会虚化。
+- `Focus Selected Object`：选中物体后点击，可把焦点距离自动设置到该物体附近。
 
-Turntable 只影响实时 OpenGL 视口，不会自动触发 CPU Ray Tracing。用户左键旋转视角、右键平移、滚轮缩放或拖动物体/光源时，Turntable 会自动暂停，避免和手动操作抢控制权。
+注意：景深效果主要出现在 `High Quality Render` 的 CPU 渲染结果里。实时 OpenGL 视口用于交互预览，不会直接模糊背景。
 
-点击 `High Quality Render` 时，程序会使用当前实时视口相机姿态作为 CPU 渲染快照，因此可以先用 Turntable 找到满意角度，再暂停并渲染最终图像。
+## Transform Gizmo
 
-## Emissive 发光材质
+选中 Sphere、Box、Cylinder、Point Light 或 Area Light 后，实时视口会显示三根坐标轴：
 
-Emissive 是材质层面的自发光。它不依赖 Point Light 或 Area Light，也能在实时视口和 CPU 渲染结果中可见。
+- 红色：X 轴
+- 绿色：Y 轴
+- 蓝色：Z 轴
 
-Inspector 中可以设置：
+按住某根轴拖动即可沿对应方向移动选中对象。Gizmo 拖动会复用现有移动逻辑，因此 Scene Panel、Overlay Label、Turntable 自动暂停、CPU 渲染快照都能保持一致。
 
-- `Material = Emissive`
-- `Emission Color`：发光颜色
-- `Emission Strength`：发光强度
+## 粒子雨效
 
-当前 Emissive 物体会自己发亮，并能触发实时 Bloom；它仍然和 Area Light 是两个不同概念。
+雨效默认关闭。需要时在 `Particles / Rain` 面板勾选 `Enable Rain`。
 
-## 纹理与环境
+可调参数包括：
 
-材质可以启用纹理，用于给 Sphere / Plane / Box / Cylinder 添加棋盘格或图片纹理。Inspector 中可调节：
+- `Rain Rate`
+- `Drop Speed`
+- `Drop Lifetime`
+- `Gravity`
+- `Spawn Area Size`
+- `Enable Splash`
+- `Splash Intensity`
+- `Drop Size`
 
-- `Enable Texture`
-- `Texture Path`
-- `Texture Scale`
-- `Texture Offset U / V`
-- `Texture Strength`
-
-环境背景支持渐变、纯色和图片模式。右侧 `Environment` 面板可调节：
-
-- `Mode`
-- `Load Image`
-- `Exposure`
-- `Intensity`
-- `Rotation Y`
-
-实时视口会使用环境背景辅助预览金属、玻璃和整体氛围；CPU Ray Tracing 在 miss ray 时也会采样当前环境设置。
-
-## Area Light 与 Soft Shadows
-
-Area Light 是显式光源对象，当前实现为矩形面光源。它包含：
-
-- `position`：中心位置
-- `normal`：朝向
-- `width`
-- `height`
-- `color`
-- `intensity`
-
-CPU Ray Tracing 中，Area Light 会对矩形表面进行多点采样，从 shading point 向采样点发射 shadow ray，统计可见样本贡献并平均，从而产生软阴影。Point Light 仍保留原有硬阴影路径。
-
-实时视口中，Area Light 会显示为可见的发光矩形，支持选中和拖拽；实时视口目前主要用于快速交互，不强制计算真实软阴影。软阴影效果主要在 `High Quality Render` 的 CPU 渲染结果中体现。
-
-## Bloom 泛光
-
-实时视口支持 Bloom 后处理：
-
-- 提取亮部区域
-- 对亮部做水平/垂直模糊
-- 与原场景合成
-- 使用 Exposure 控制最终显示亮度
-
-右侧 `Post Processing` 面板可调节：
-
-- Bloom 开关
-- Exposure
-- Threshold
-- Strength
-- Blur Passes
-
-如果已经生成 CPU 高质量渲染结果，`Save Image` 优先保存 CPU 图像；否则保存当前实时视口截图，截图包含当前 Bloom 效果。
+关闭 Rain 时会清空当前粒子，避免雨滴残留遮挡画面。
 
 ## 项目结构
 
 ```text
 src/
   core/          数学、射线、相机、材质、纹理、环境、光源、几何体、场景、序列化、CPU 渲染
-  gui/           Qt Widgets 界面、实时渲染视口、场景面板
-  interaction/   picking、Overlay 投影、鼠标交互辅助逻辑
-  preview/       OpenGL 后处理、Bloom、环境贴图辅助
+  gui/           Qt Widgets 界面、实时视口、渲染结果预览、场景面板
+  interaction/   picking、Overlay 投影、鼠标交互辅助
+  particle/      CPU 粒子系统、RainEmitter、SplashEmitter
+  preview/       OpenGL Bloom、Skybox / Environment 辅助
 ```
 
 ## 图形学技术点

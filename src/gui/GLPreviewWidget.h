@@ -36,6 +36,7 @@ public:
     void setTurntableTargetMode(tinyray::TurntableTargetMode mode);
     tinyray::TurntableTargetMode turntableTargetMode() const;
     void setTurntableCustomTarget(const tinyray::Vec3& target);
+    void setDepthOfField(double aperture, double focusDistance);
     void advanceTurntable(double deltaTimeSeconds);
     void resetView();
     bool focusSelectedObject();
@@ -55,6 +56,10 @@ protected:
     void initializeGL() override;
     void resizeGL(int width, int height) override;
     void paintGL() override;
+    virtual void drawRealtimeOverlay();
+    const tinyray::Scene& previewScene() const;
+    const tinyray::OrbitCamera& previewCamera() const;
+    void invalidateRealtimeAccumulation();
 
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -69,6 +74,14 @@ private:
         Pan
     };
 
+    enum class GizmoAxis
+    {
+        None,
+        X,
+        Y,
+        Z
+    };
+
     void setupCameraMatrices();
     void setupLights();
     void initializePathTracer();
@@ -79,6 +92,7 @@ private:
     void uploadPathTraceScene(QOpenGLShaderProgram& program);
     void drawFullScreenTriangle(QOpenGLShaderProgram& program);
     void drawLightMarkersOverlay();
+    void drawTransformGizmo();
     void drawOverlayLabels();
     void drawScene();
     void drawBox(const tinyray::Box& box);
@@ -90,6 +104,7 @@ private:
     bool isSelectionClick(const QPoint& releasePosition) const;
     void updateSelectionFromClick(const QPoint& screenPosition);
     bool beginObjectDrag(const QPoint& screenPosition);
+    bool beginGizmoDrag(const QPoint& screenPosition);
     void updateObjectDrag(const QPoint& screenPosition);
     void finishObjectDrag();
     void pauseTurntableForUserInput();
@@ -99,6 +114,10 @@ private:
     int pickLight(const tinyray::Ray& ray) const;
     bool draggableObjectCenter(int objectId, tinyray::Vec3& center) const;
     bool setDraggableObjectCenter(int objectId, const tinyray::Vec3& center);
+    bool gizmoCenter(tinyray::Vec3& center) const;
+    GizmoAxis pickGizmoAxis(const QPoint& screenPosition) const;
+    bool isAxisDragActive() const;
+    tinyray::Vec3 gizmoAxisVector(GizmoAxis axis) const;
     bool rayIntersectsDragPlane(const tinyray::Ray& ray, tinyray::Vec3& hitPoint) const;
     tinyray::Vec3 axisDragCenter(const QPoint& screenPosition) const;
     tinyray::Vec3 dragAxisVector() const;
@@ -120,6 +139,7 @@ private:
     bool isDraggingObject_ = false;
     bool isDraggingLight_ = false;
     bool turntablePausedByUserInputPending_ = false;
+    GizmoAxis activeGizmoAxis_ = GizmoAxis::None;
     tinyray::Vec3 dragStartObjectCenter_;
     tinyray::Vec3 dragStartGroundPoint_;
     tinyray::Vec3 dragOffset_;

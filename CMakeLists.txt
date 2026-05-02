@@ -28,6 +28,12 @@ add_executable(TinyRayStudio WIN32
     src/gui/ScenePanelEmissive.cpp
     src/preview/BloomPass.cpp
     src/gui/ScenePanelSelection.cpp
+    src/particle/Particle.h
+    src/particle/Particle.cpp
+    src/particle/ParticleSystem.h
+    src/particle/ParticleSystem.cpp
+    src/particle/Emitter.h
+    src/particle/Emitter.cpp
     src/core/Vec3.h
     src/core/MathUtils.h
     src/core/Random.h
