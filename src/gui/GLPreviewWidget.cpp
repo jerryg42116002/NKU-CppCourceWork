@@ -4,8 +4,12 @@
 #include <cmath>
 
 #include <QOpenGLFramebufferObjectFormat>
+#include <QFontMetrics>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPen>
 #include <QSize>
+#include <QStringList>
 #include <QVector2D>
 #include <QVector3D>
 #include <QWheelEvent>
@@ -16,10 +20,13 @@
 #include "core/Box.h"
 #include "core/Cylinder.h"
 #include "core/MathUtils.h"
+#include "core/Object.h"
 #include "core/Plane.h"
 #include "core/Sphere.h"
 #include "interaction/Picking.h"
+#include "interaction/OverlayProjector.h"
 #include "preview/BloomPass.h"
+#include "preview/SkyboxRenderer.h"
 
 namespace {
 
@@ -45,6 +52,21 @@ int materialTypeIndex(tinyray::MaterialType type)
     }
 }
 
+int environmentModeIndex(tinyray::EnvironmentMode mode)
+{
+    switch (mode) {
+    case tinyray::EnvironmentMode::SolidColor:
+        return 1;
+    case tinyray::EnvironmentMode::Image:
+        return 2;
+    case tinyray::EnvironmentMode::HDRImage:
+        return 3;
+    case tinyray::EnvironmentMode::Gradient:
+    default:
+        return 0;
+    }
+}
+
 void setMaterialUniform(QOpenGLShaderProgram& program,
                         const QString& name,
                         const tinyray::Material& material)
@@ -61,6 +83,144 @@ void setMaterialUniform(QOpenGLShaderProgram& program,
                             toQVector3D(material.emissionColor));
     program.setUniformValue((name + QStringLiteral(".emissionStrength")).toUtf8().constData(),
                             static_cast<float>(material.safeEmissionStrength()));
+    program.setUniformValue((name + QStringLiteral(".useTexture")).toUtf8().constData(),
+                            material.useTexture ? 1 : 0);
+    program.setUniformValue((name + QStringLiteral(".textureType")).toUtf8().constData(),
+                            material.textureType == tinyray::TextureType::Checkerboard ? 1 : 0);
+    program.setUniformValue((name + QStringLiteral(".textureScale")).toUtf8().constData(),
+                            static_cast<float>(material.textureScale));
+    program.setUniformValue((name + QStringLiteral(".textureOffset")).toUtf8().constData(),
+                            QVector2D(static_cast<float>(material.textureOffsetU),
+                                      static_cast<float>(material.textureOffsetV)));
+    program.setUniformValue((name + QStringLiteral(".textureRotation")).toUtf8().constData(),
+                            static_cast<float>(material.textureRotation));
+    program.setUniformValue((name + QStringLiteral(".textureStrength")).toUtf8().constData(),
+                            static_cast<float>(material.textureStrength));
+    program.setUniformValue((name + QStringLiteral(".fallbackColor")).toUtf8().constData(),
+                            toQVector3D(material.fallbackColor));
+    program.setUniformValue((name + QStringLiteral(".checkerColorA")).toUtf8().constData(),
+                            toQVector3D(material.checkerColorA));
+    program.setUniformValue((name + QStringLiteral(".checkerColorB")).toUtf8().constData(),
+                            toQVector3D(material.checkerColorB));
+}
+
+QString firstMaterialTexturePath(const tinyray::Scene& scene)
+{
+    for (const auto& object : scene.objects) {
+        if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object.get())) {
+            if (sphere->material.useTexture && sphere->material.textureType == tinyray::TextureType::Image && !sphere->material.texturePath.isEmpty()) {
+                return sphere->material.texturePath;
+            }
+        } else if (const auto* box = dynamic_cast<const tinyray::Box*>(object.get())) {
+            if (box->material.useTexture && box->material.textureType == tinyray::TextureType::Image && !box->material.texturePath.isEmpty()) {
+                return box->material.texturePath;
+            }
+        } else if (const auto* cylinder = dynamic_cast<const tinyray::Cylinder*>(object.get())) {
+            if (cylinder->material.useTexture && cylinder->material.textureType == tinyray::TextureType::Image && !cylinder->material.texturePath.isEmpty()) {
+                return cylinder->material.texturePath;
+            }
+        } else if (const auto* plane = dynamic_cast<const tinyray::Plane*>(object.get())) {
+            if (plane->material.useTexture && plane->material.textureType == tinyray::TextureType::Image && !plane->material.texturePath.isEmpty()) {
+                return plane->material.texturePath;
+            }
+        }
+    }
+    return QString();
+}
+
+QString materialTypeName(tinyray::MaterialType type)
+{
+    switch (type) {
+    case tinyray::MaterialType::Metal:
+        return QStringLiteral("Metal");
+    case tinyray::MaterialType::Glass:
+        return QStringLiteral("Glass");
+    case tinyray::MaterialType::Emissive:
+        return QStringLiteral("Emissive");
+    case tinyray::MaterialType::Diffuse:
+    default:
+        return QStringLiteral("Diffuse");
+    }
+}
+
+QString vec3Text(const tinyray::Vec3& value)
+{
+    return QStringLiteral("(%1, %2, %3)")
+        .arg(value.x, 0, 'f', 2)
+        .arg(value.y, 0, 'f', 2)
+        .arg(value.z, 0, 'f', 2);
+}
+
+const tinyray::Material* objectMaterial(const tinyray::Object* object)
+{
+    if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object)) {
+        return &sphere->material;
+    }
+    if (const auto* box = dynamic_cast<const tinyray::Box*>(object)) {
+        return &box->material;
+    }
+    if (const auto* cylinder = dynamic_cast<const tinyray::Cylinder*>(object)) {
+        return &cylinder->material;
+    }
+    if (const auto* plane = dynamic_cast<const tinyray::Plane*>(object)) {
+        return &plane->material;
+    }
+    return nullptr;
+}
+
+tinyray::Vec3 objectOverlayPosition(const tinyray::Object* object)
+{
+    if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object)) {
+        return sphere->center + tinyray::Vec3(0.0, std::max(sphere->radius, 0.0) + 0.18, 0.0);
+    }
+    if (const auto* box = dynamic_cast<const tinyray::Box*>(object)) {
+        return box->center + tinyray::Vec3(0.0, std::max(box->size.y, 0.0) * 0.5 + 0.18, 0.0);
+    }
+    if (const auto* cylinder = dynamic_cast<const tinyray::Cylinder*>(object)) {
+        return cylinder->center + tinyray::Vec3(0.0, std::max(cylinder->height, 0.0) * 0.5 + 0.18, 0.0);
+    }
+    if (const auto* plane = dynamic_cast<const tinyray::Plane*>(object)) {
+        tinyray::Vec3 normal = plane->normal.normalized();
+        if (normal.nearZero()) {
+            normal = tinyray::Vec3(0.0, 1.0, 0.0);
+        }
+        return plane->point + normal * 0.22;
+    }
+    return tinyray::Vec3(0.0, 0.0, 0.0);
+}
+
+QString objectTypeName(const tinyray::Object* object)
+{
+    if (dynamic_cast<const tinyray::Sphere*>(object)) {
+        return QStringLiteral("Sphere");
+    }
+    if (dynamic_cast<const tinyray::Box*>(object)) {
+        return QStringLiteral("Box");
+    }
+    if (dynamic_cast<const tinyray::Cylinder*>(object)) {
+        return QStringLiteral("Cylinder");
+    }
+    if (dynamic_cast<const tinyray::Plane*>(object)) {
+        return QStringLiteral("Plane");
+    }
+    return QStringLiteral("Object");
+}
+
+tinyray::Vec3 objectPosition(const tinyray::Object* object)
+{
+    if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object)) {
+        return sphere->center;
+    }
+    if (const auto* box = dynamic_cast<const tinyray::Box*>(object)) {
+        return box->center;
+    }
+    if (const auto* cylinder = dynamic_cast<const tinyray::Cylinder*>(object)) {
+        return cylinder->center;
+    }
+    if (const auto* plane = dynamic_cast<const tinyray::Plane*>(object)) {
+        return plane->point;
+    }
+    return tinyray::Vec3(0.0, 0.0, 0.0);
 }
 
 } // namespace
@@ -80,6 +240,7 @@ void GLPreviewWidget::setScene(const tinyray::Scene& scene)
     if (selectedLightIndex_ >= static_cast<int>(scene_.lights.size())) {
         selectedLightIndex_ = -1;
     }
+    updateTurntableTarget();
     resetPathTraceAccumulation();
     update();
 }
@@ -89,6 +250,7 @@ void GLPreviewWidget::setSelectedObjectId(int objectId)
     selectedObjectId_ = objectId;
     selectedLightIndex_ = -1;
     scene_.selectedObjectId = objectId;
+    updateTurntableTarget();
     resetPathTraceAccumulation();
     update();
 }
@@ -96,6 +258,116 @@ void GLPreviewWidget::setSelectedObjectId(int objectId)
 void GLPreviewWidget::setObjectDragMode(tinyray::ObjectDragMode mode)
 {
     objectDragMode_ = mode;
+}
+
+void GLPreviewWidget::setTurntableEnabled(bool enabled)
+{
+    camera_.turntableEnabled = enabled;
+    turntablePausedByUserInputPending_ = false;
+    if (enabled) {
+        updateTurntableTarget();
+    }
+    resetPathTraceAccumulation();
+    update();
+}
+
+bool GLPreviewWidget::turntableEnabled() const
+{
+    return camera_.turntableEnabled;
+}
+
+void GLPreviewWidget::setTurntableSpeed(double degreesPerSecond)
+{
+    camera_.turntableSpeed = std::clamp(degreesPerSecond, 0.0, 360.0);
+}
+
+double GLPreviewWidget::turntableSpeed() const
+{
+    return camera_.turntableSpeed;
+}
+
+void GLPreviewWidget::setTurntableDirection(tinyray::TurntableDirection direction)
+{
+    camera_.turntableDirection = direction;
+}
+
+void GLPreviewWidget::setTurntableTargetMode(tinyray::TurntableTargetMode mode)
+{
+    camera_.turntableTargetMode = mode;
+    if (mode == tinyray::TurntableTargetMode::CustomTarget) {
+        camera_.turntableCustomTarget = camera_.target;
+    }
+    updateTurntableTarget();
+    resetPathTraceAccumulation();
+    update();
+}
+
+tinyray::TurntableTargetMode GLPreviewWidget::turntableTargetMode() const
+{
+    return camera_.turntableTargetMode;
+}
+
+void GLPreviewWidget::setTurntableCustomTarget(const tinyray::Vec3& target)
+{
+    if (!std::isfinite(target.x) || !std::isfinite(target.y) || !std::isfinite(target.z)) {
+        return;
+    }
+    camera_.turntableCustomTarget = target;
+    if (camera_.turntableTargetMode == tinyray::TurntableTargetMode::CustomTarget) {
+        updateTurntableTarget();
+        resetPathTraceAccumulation();
+        update();
+    }
+}
+
+void GLPreviewWidget::advanceTurntable(double deltaTimeSeconds)
+{
+    if (!camera_.turntableEnabled) {
+        return;
+    }
+
+    updateTurntableTarget();
+    if (camera_.updateTurntable(deltaTimeSeconds)) {
+        resetPathTraceAccumulation();
+        update();
+    }
+}
+
+void GLPreviewWidget::resetView()
+{
+    camera_ = tinyray::OrbitCamera();
+    camera_.target = sceneCenter();
+    camera_.turntableCustomTarget = camera_.target;
+    resetPathTraceAccumulation();
+    update();
+}
+
+bool GLPreviewWidget::focusSelectedObject()
+{
+    tinyray::Vec3 center;
+    if (!selectedObjectCenter(center)) {
+        return false;
+    }
+
+    camera_.target = center;
+    camera_.turntableCustomTarget = center;
+    resetPathTraceAccumulation();
+    update();
+    return true;
+}
+
+tinyray::Camera GLPreviewWidget::currentCameraSnapshot() const
+{
+    tinyray::Camera camera = scene_.camera;
+    const QSize bufferSize = renderBufferSize();
+    camera.position = camera_.position();
+    camera.lookAt = camera_.target;
+    camera.up = camera_.up;
+    camera.fieldOfViewYDegrees = camera_.fov;
+    camera.aspectRatio = bufferSize.height() > 0
+        ? static_cast<double>(bufferSize.width()) / static_cast<double>(bufferSize.height())
+        : camera.aspectRatio;
+    return camera;
 }
 
 int GLPreviewWidget::selectedObjectId() const
@@ -134,6 +406,7 @@ void GLPreviewWidget::paintGL()
 {
     if (pathTracerReady_) {
         renderPathTracedScene();
+        drawOverlayLabels();
         return;
     }
 
@@ -141,6 +414,7 @@ void GLPreviewWidget::paintGL()
     setupCameraMatrices();
     setupLights();
     drawScene();
+    drawOverlayLabels();
 }
 
 void GLPreviewWidget::mousePressEvent(QMouseEvent* event)
@@ -165,6 +439,7 @@ void GLPreviewWidget::mouseMoveEvent(QMouseEvent* event)
     const QPoint currentPosition = event->position().toPoint();
     if (isDraggingObject_ || isDraggingLight_) {
         updateObjectDrag(currentPosition);
+        pauseTurntableForUserInput();
         lastMousePosition_ = currentPosition;
         return;
     }
@@ -177,11 +452,13 @@ void GLPreviewWidget::mouseMoveEvent(QMouseEvent* event)
         emit interactionStatusChanged(QStringLiteral("Camera orbiting"));
         resetPathTraceAccumulation();
         update();
+        pauseTurntableForUserInput();
     } else if (dragMode_ == DragMode::Pan) {
         camera_.pan(-delta.x(), delta.y());
         emit interactionStatusChanged(QStringLiteral("Camera panning"));
         resetPathTraceAccumulation();
         update();
+        pauseTurntableForUserInput();
     }
 }
 
@@ -196,7 +473,12 @@ void GLPreviewWidget::mouseReleaseEvent(QMouseEvent* event)
     }
 
     dragMode_ = DragMode::None;
-    emit interactionStatusChanged(QStringLiteral("Real-time rendering"));
+    if (turntablePausedByUserInputPending_) {
+        emit interactionStatusChanged(QStringLiteral("Turntable paused by user input"));
+        turntablePausedByUserInputPending_ = false;
+    } else {
+        emit interactionStatusChanged(QStringLiteral("Real-time rendering"));
+    }
 }
 
 void GLPreviewWidget::wheelEvent(QWheelEvent* event)
@@ -210,6 +492,8 @@ void GLPreviewWidget::wheelEvent(QWheelEvent* event)
     emit interactionStatusChanged(QStringLiteral("Real-time rendering"));
     resetPathTraceAccumulation();
     update();
+    pauseTurntableForUserInput();
+    turntablePausedByUserInputPending_ = false;
 }
 
 void GLPreviewWidget::setupCameraMatrices()
@@ -289,12 +573,32 @@ void GLPreviewWidget::initializePathTracer()
             float refractiveIndex;
             vec3 emissionColor;
             float emissionStrength;
+            int useTexture;
+            int textureType;
+            float textureScale;
+            vec2 textureOffset;
+            float textureRotation;
+            float textureStrength;
+            vec3 fallbackColor;
+            vec3 checkerColorA;
+            vec3 checkerColorB;
         };
 
         uniform sampler2D uPreviousFrame;
         uniform vec2 uResolution;
         uniform int uFrameIndex;
         uniform int uSelectedId;
+        uniform int uEnvironmentMode;
+        uniform int uEnvironmentHasImage;
+        uniform sampler2D uEnvironmentMap;
+        uniform int uMaterialImageEnabled;
+        uniform sampler2D uMaterialImageMap;
+        uniform vec3 uEnvironmentTopColor;
+        uniform vec3 uEnvironmentBottomColor;
+        uniform vec3 uEnvironmentSolidColor;
+        uniform float uEnvironmentExposure;
+        uniform float uEnvironmentIntensity;
+        uniform float uEnvironmentRotationY;
         uniform vec3 uCameraPosition;
         uniform vec3 uCameraForward;
         uniform vec3 uCameraRight;
@@ -332,11 +636,14 @@ void GLPreviewWidget::initializePathTracer()
         uniform float uLightIntensity[MAX_LIGHTS];
 
         varying vec2 vUv;
+    )"
+    R"(
 
         struct Hit {
             float t;
             vec3 point;
             vec3 normal;
+            vec2 uv;
             int objectId;
             MaterialData material;
         };
@@ -356,12 +663,31 @@ void GLPreviewWidget::initializePathTracer()
             return vec3(r * cos(a), z, r * sin(a));
         }
 
-        vec3 skyColor(vec3 direction)
+        vec3 rotateEnvironment(vec3 direction)
         {
-            float t = 0.5 * (normalize(direction).y + 1.0);
-            vec3 horizon = vec3(0.78, 0.84, 0.92);
-            vec3 zenith = vec3(0.12, 0.22, 0.38);
-            return mix(horizon, zenith, t);
+            float c = cos(uEnvironmentRotationY);
+            float s = sin(uEnvironmentRotationY);
+            return vec3(c * direction.x - s * direction.z,
+                        direction.y,
+                        s * direction.x + c * direction.z);
+        }
+
+        vec3 sampleEnvironment(vec3 direction)
+        {
+            vec3 dir = normalize(direction);
+            vec3 color;
+            if (uEnvironmentMode == 1) {
+                color = uEnvironmentSolidColor;
+            } else if ((uEnvironmentMode == 2 || uEnvironmentMode == 3) && uEnvironmentHasImage == 1) {
+                vec3 envDir = rotateEnvironment(dir);
+                float u = fract(0.5 + atan(envDir.z, envDir.x) / 6.2831853);
+                float v = clamp(acos(clamp(envDir.y, -1.0, 1.0)) / 3.1415926, 0.0, 1.0);
+                color = texture2D(uEnvironmentMap, vec2(u, v)).rgb;
+            } else {
+                float t = 0.5 * (dir.y + 1.0);
+                color = mix(uEnvironmentBottomColor, uEnvironmentTopColor, clamp(t, 0.0, 1.0));
+            }
+            return color * max(uEnvironmentIntensity, 0.0) * max(uEnvironmentExposure, 0.0);
         }
 
         MaterialData fallbackMaterial()
@@ -373,6 +699,15 @@ void GLPreviewWidget::initializePathTracer()
             material.refractiveIndex = 1.5;
             material.emissionColor = vec3(1.0, 0.6, 0.1);
             material.emissionStrength = 0.0;
+            material.useTexture = 0;
+            material.textureType = 0;
+            material.textureScale = 1.0;
+            material.textureOffset = vec2(0.0);
+            material.textureRotation = 0.0;
+            material.textureStrength = 0.0;
+            material.fallbackColor = vec3(0.8);
+            material.checkerColorA = vec3(0.78, 0.78, 0.74);
+            material.checkerColorB = vec3(0.16, 0.17, 0.18);
             return material;
         }
 
@@ -399,6 +734,9 @@ void GLPreviewWidget::initializePathTracer()
             hit.t = t;
             hit.point = ro + rd * t;
             hit.normal = normalize(hit.point - uSphereCenter[index]);
+            float theta = acos(clamp(-hit.normal.y, -1.0, 1.0));
+            float phi = atan(-hit.normal.z, hit.normal.x) + 3.1415926;
+            hit.uv = vec2(phi / 6.2831853, theta / 3.1415926);
             hit.objectId = uSphereId[index];
             hit.material = uSphereMaterial[index];
             return true;
@@ -420,6 +758,7 @@ void GLPreviewWidget::initializePathTracer()
             hit.t = t;
             hit.point = ro + rd * t;
             hit.normal = denom < 0.0 ? normal : -normal;
+            hit.uv = hit.point.xz;
             hit.objectId = uPlaneId[index];
             hit.material = uPlaneMaterial[index];
             return true;
@@ -455,6 +794,7 @@ void GLPreviewWidget::initializePathTracer()
             hit.t = tNear;
             hit.point = ro + rd * tNear;
             hit.normal = boxNormal(hit.point, uBoxMin[index], uBoxMax[index]);
+            hit.uv = hit.point.xz;
             if (dot(hit.normal, rd) > 0.0) {
                 hit.normal = -hit.normal;
             }
@@ -515,6 +855,8 @@ void GLPreviewWidget::initializePathTracer()
             hit.t = bestT;
             hit.point = ro + rd * bestT;
             hit.normal = dot(bestNormal, rd) > 0.0 ? -bestNormal : bestNormal;
+            hit.uv = vec2(atan(hit.point.z - uCylinderCenter[index].z, hit.point.x - uCylinderCenter[index].x) / 6.2831853 + 0.5,
+                          (hit.point.y - (uCylinderCenter[index].y - uCylinderHeight[index] * 0.5)) / max(uCylinderHeight[index], 0.001));
             hit.objectId = uCylinderId[index];
             hit.material = uCylinderMaterial[index];
             return true;
@@ -561,12 +903,51 @@ void GLPreviewWidget::initializePathTracer()
 
             return found;
         }
+    )"
+    R"(
 
         float schlick(float cosine, float refractiveIndex)
         {
             float r0 = (1.0 - refractiveIndex) / (1.0 + refractiveIndex);
             r0 = r0 * r0;
             return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
+        }
+
+        vec3 checkerTexture(vec2 uv, MaterialData material)
+        {
+            float safeScale = max(material.textureScale, 0.001);
+            vec2 centered = uv - vec2(0.5);
+            float c = cos(material.textureRotation);
+            float s = sin(material.textureRotation);
+            vec2 rotated = vec2(centered.x * c - centered.y * s,
+                                centered.x * s + centered.y * c) + vec2(0.5);
+            vec2 p = rotated + material.textureOffset;
+            vec2 cell = floor(p * safeScale);
+            float parity = mod(cell.x + cell.y, 2.0);
+            return parity < 1.0 ? material.checkerColorA : material.checkerColorB;
+        }
+
+        MaterialData materialAtUv(MaterialData material, vec2 uv)
+        {
+            if (material.useTexture == 0) {
+                return material;
+            }
+
+            vec3 sampled = material.fallbackColor;
+            if (material.textureType == 0 && uMaterialImageEnabled == 1) {
+                vec2 centered = uv - vec2(0.5);
+                float c = cos(material.textureRotation);
+                float s = sin(material.textureRotation);
+                vec2 rotated = vec2(centered.x * c - centered.y * s,
+                                    centered.x * s + centered.y * c) + vec2(0.5);
+                vec2 p = rotated + material.textureOffset;
+                sampled = texture2D(uMaterialImageMap, fract(p * max(material.textureScale, 0.001))).rgb;
+            } else if (material.textureType == 1) {
+                sampled = checkerTexture(uv, material);
+            }
+            float strength = clamp(material.textureStrength, 0.0, 1.0);
+            material.albedo = mix(material.albedo, sampled, strength);
+            return material;
         }
 
         vec3 directLighting(vec3 point, vec3 normal, vec3 viewDirection, MaterialData material)
@@ -601,7 +982,7 @@ void GLPreviewWidget::initializePathTracer()
             for (int bounce = 0; bounce < 4; ++bounce) {
                 Hit hit;
                 if (!intersectScene(ro, rd, 0.002, 1000.0, hit)) {
-                    radiance += throughput * skyColor(rd);
+                    radiance += throughput * sampleEnvironment(rd);
                     break;
                 }
 
@@ -615,21 +996,28 @@ void GLPreviewWidget::initializePathTracer()
                     break;
                 }
 
+                MaterialData shadedMaterial = materialAtUv(hit.material, hit.uv);
                 vec3 viewDirection = normalize(-rd);
-                radiance += throughput * directLighting(hit.point, normal, viewDirection, hit.material);
+                radiance += throughput * directLighting(hit.point, normal, viewDirection, shadedMaterial);
+                if (shadedMaterial.type == 1) {
+                    vec3 envReflection = sampleEnvironment(reflect(rd, normal));
+                    radiance += throughput * envReflection * mix(0.10, 0.42, 1.0 - clamp(shadedMaterial.roughness, 0.0, 1.0));
+                } else if (shadedMaterial.type == 2) {
+                    radiance += throughput * sampleEnvironment(reflect(rd, normal)) * 0.22;
+                }
 
-                if (hit.material.type == 1) {
+                if (shadedMaterial.type == 1) {
                     vec3 reflected = reflect(rd, normal);
-                    float roughness = clamp(hit.material.roughness, 0.0, 1.0);
+                    float roughness = clamp(shadedMaterial.roughness, 0.0, 1.0);
                     rd = normalize(mix(reflected, reflected + randomUnitVector(seed + float(bounce) * 11.3), roughness * roughness));
                     ro = hit.point + normal * 0.003;
-                    throughput *= hit.material.albedo;
-                } else if (hit.material.type == 2) {
-                    float eta = dot(rd, normal) < 0.0 ? 1.0 / max(hit.material.refractiveIndex, 1.01) : max(hit.material.refractiveIndex, 1.01);
+                    throughput *= shadedMaterial.albedo;
+                } else if (shadedMaterial.type == 2) {
+                    float eta = dot(rd, normal) < 0.0 ? 1.0 / max(shadedMaterial.refractiveIndex, 1.01) : max(shadedMaterial.refractiveIndex, 1.01);
                     vec3 outwardNormal = dot(rd, normal) < 0.0 ? normal : -normal;
                     float cosTheta = min(dot(-rd, outwardNormal), 1.0);
                     vec3 refracted = refract(rd, outwardNormal, eta);
-                    float reflectChance = length(refracted) < 0.001 ? 1.0 : schlick(cosTheta, hit.material.refractiveIndex);
+                    float reflectChance = length(refracted) < 0.001 ? 1.0 : schlick(cosTheta, shadedMaterial.refractiveIndex);
                     if (hash(seed + float(bounce) * 23.7) < reflectChance) {
                         rd = normalize(reflect(rd, normal));
                         ro = hit.point + normal * 0.003;
@@ -637,12 +1025,12 @@ void GLPreviewWidget::initializePathTracer()
                         rd = normalize(refracted);
                         ro = hit.point - outwardNormal * 0.003;
                     }
-                    throughput *= mix(hit.material.albedo, vec3(1.0), 0.65);
+                    throughput *= mix(shadedMaterial.albedo, vec3(1.0), 0.65);
                 } else {
                     vec3 target = normal + randomUnitVector(seed + float(bounce) * 7.1);
                     rd = normalize(target);
                     ro = hit.point + normal * 0.003;
-                    throughput *= hit.material.albedo;
+                    throughput *= shadedMaterial.albedo;
                 }
 
                 if (max(max(throughput.r, throughput.g), throughput.b) < 0.03) {
@@ -813,6 +1201,126 @@ void GLPreviewWidget::drawLightMarkersOverlay()
     glEnable(GL_CULL_FACE);
 }
 
+void GLPreviewWidget::drawOverlayLabels()
+{
+    if (!scene_.overlayLabelsEnabled) {
+        return;
+    }
+
+    QStringList lines;
+    tinyray::Vec3 anchorWorld;
+    bool hasAnchor = false;
+
+    if (selectedObjectId_ >= 0) {
+        const tinyray::Object* object = scene_.objectById(selectedObjectId_);
+        if (!object) {
+            return;
+        }
+
+        anchorWorld = objectOverlayPosition(object);
+        hasAnchor = true;
+        lines << QStringLiteral("%1 #%2").arg(objectTypeName(object)).arg(object->id());
+        lines << QStringLiteral("Type: %1").arg(objectTypeName(object));
+        if (scene_.overlayShowPosition) {
+            lines << QStringLiteral("Pos: %1").arg(vec3Text(objectPosition(object)));
+        }
+
+        if (scene_.overlayShowMaterialInfo) {
+            if (const tinyray::Material* material = objectMaterial(object)) {
+                lines << QStringLiteral("Mat: %1").arg(materialTypeName(material->type));
+                if (material->useTexture) {
+                    lines << QStringLiteral("Tex: %1").arg(
+                        material->textureType == tinyray::TextureType::Checkerboard
+                            ? QStringLiteral("Checkerboard")
+                            : QStringLiteral("Image"));
+                }
+                if (material->type == tinyray::MaterialType::Emissive) {
+                    lines << QStringLiteral("Intensity: %1").arg(material->safeEmissionStrength(), 0, 'f', 2);
+                }
+            }
+        }
+    } else if (selectedLightIndex_ >= 0 && selectedLightIndex_ < static_cast<int>(scene_.lights.size())) {
+        const tinyray::Light& light = scene_.lights[static_cast<std::size_t>(selectedLightIndex_)];
+        anchorWorld = light.position;
+        hasAnchor = true;
+        lines << QStringLiteral("%1 Light #%2")
+                     .arg(light.type == tinyray::LightType::Area ? QStringLiteral("Area") : QStringLiteral("Point"))
+                     .arg(selectedLightIndex_ + 1);
+        lines << QStringLiteral("Type: %1").arg(light.type == tinyray::LightType::Area
+            ? QStringLiteral("Area Light")
+            : QStringLiteral("Point Light"));
+        if (scene_.overlayShowPosition) {
+            lines << QStringLiteral("Pos: %1").arg(vec3Text(light.position));
+        }
+        if (scene_.overlayShowMaterialInfo) {
+            lines << QStringLiteral("Intensity: %1").arg(light.intensity, 0, 'f', 2);
+            if (light.type == tinyray::LightType::Area) {
+                lines << QStringLiteral("Size: %1 x %2")
+                             .arg(light.width, 0, 'f', 2)
+                             .arg(light.height, 0, 'f', 2);
+            }
+        }
+    }
+
+    if (!hasAnchor || lines.isEmpty()) {
+        return;
+    }
+
+    const tinyray::ScreenProjection projected = tinyray::worldToScreen(anchorWorld, size(), camera_);
+    if (!projected.visible) {
+        return;
+    }
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+
+    QFont font = painter.font();
+    font.setPointSize(9);
+    painter.setFont(font);
+
+    const QFontMetrics metrics(font);
+    int textWidth = 0;
+    for (const QString& line : lines) {
+        textWidth = std::max(textWidth, metrics.horizontalAdvance(line));
+    }
+    const int lineHeight = metrics.height();
+    const qreal paddingX = 10.0;
+    const qreal paddingY = 7.0;
+    const QSizeF boxSize(static_cast<qreal>(textWidth) + paddingX * 2.0,
+                         static_cast<qreal>(lineHeight * lines.size()) + paddingY * 2.0);
+
+    QPointF topLeft = projected.position + QPointF(16.0, -boxSize.height() - 12.0);
+    const double maxX = std::max(8.0, static_cast<double>(width()) - boxSize.width() - 8.0);
+    const double maxY = std::max(8.0, static_cast<double>(height()) - boxSize.height() - 8.0);
+    topLeft.setX(std::clamp(topLeft.x(), 8.0, maxX));
+    topLeft.setY(std::clamp(topLeft.y(), 8.0, maxY));
+    const QRectF box(topLeft, boxSize);
+
+    painter.setPen(QPen(QColor(255, 214, 92, 185), 1.0));
+    painter.drawLine(projected.position, QPointF(box.left() + 8.0, box.bottom() - 8.0));
+
+    painter.setPen(QPen(QColor(255, 255, 255, 55), 1.0));
+    painter.setBrush(QColor(12, 16, 24, 218));
+    painter.drawRoundedRect(box, 7.0, 7.0);
+
+    painter.setPen(QColor(244, 247, 252));
+    qreal y = box.top() + paddingY + metrics.ascent();
+    for (int index = 0; index < lines.size(); ++index) {
+        if (index == 0) {
+            QFont boldFont = font;
+            boldFont.setBold(true);
+            painter.setFont(boldFont);
+            painter.setPen(QColor(255, 232, 148));
+        } else {
+            painter.setFont(font);
+            painter.setPen(QColor(230, 236, 246));
+        }
+        painter.drawText(QPointF(box.left() + paddingX, y), lines[index]);
+        y += lineHeight;
+    }
+}
+
 void GLPreviewWidget::uploadPathTraceScene(QOpenGLShaderProgram& program)
 {
     const tinyray::Vec3 cameraPosition = camera_.position();
@@ -836,6 +1344,30 @@ void GLPreviewWidget::uploadPathTraceScene(QOpenGLShaderProgram& program)
     program.setUniformValue("uCameraRight", toQVector3D(right));
     program.setUniformValue("uCameraUp", toQVector3D(up));
     program.setUniformValue("uCameraFov", static_cast<float>(camera_.fov));
+
+    static SkyboxRenderer skyboxRenderer;
+    const GLuint environmentTexture = skyboxRenderer.texture(this, scene_.environment);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, environmentTexture);
+    program.setUniformValue("uEnvironmentMap", 1);
+    program.setUniformValue("uEnvironmentHasImage", environmentTexture != 0 ? 1 : 0);
+    program.setUniformValue("uEnvironmentMode", environmentModeIndex(scene_.environment.mode));
+    program.setUniformValue("uEnvironmentTopColor", toQVector3D(scene_.environment.topColor));
+    program.setUniformValue("uEnvironmentBottomColor", toQVector3D(scene_.environment.bottomColor));
+    program.setUniformValue("uEnvironmentSolidColor", toQVector3D(scene_.environment.solidColor));
+    program.setUniformValue("uEnvironmentExposure", static_cast<float>(std::max(scene_.environment.exposure, 0.0)));
+    program.setUniformValue("uEnvironmentIntensity", static_cast<float>(std::max(scene_.environment.intensity, 0.0)));
+    program.setUniformValue("uEnvironmentRotationY", static_cast<float>(scene_.environment.rotationY));
+    static SkyboxRenderer materialTextureRenderer;
+    tinyray::Environment materialTextureEnvironment;
+    materialTextureEnvironment.mode = tinyray::EnvironmentMode::Image;
+    materialTextureEnvironment.imagePath = firstMaterialTexturePath(scene_);
+    const GLuint materialTexture = materialTextureRenderer.texture(this, materialTextureEnvironment);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, materialTexture);
+    program.setUniformValue("uMaterialImageMap", 2);
+    program.setUniformValue("uMaterialImageEnabled", materialTexture != 0 ? 1 : 0);
+    glActiveTexture(GL_TEXTURE0);
 
     int sphereCount = 0;
     int boxCount = 0;
@@ -1373,6 +1905,7 @@ void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
         selectedObjectId_ = -1;
         selectedLightIndex_ = draggedLightIndex_;
         scene_.selectedObjectId = -1;
+        updateTurntableTarget();
 
         emit lightMoved(draggedLightIndex_, newCenter.x, newCenter.y, newCenter.z);
         emit interactionStatusChanged(QStringLiteral("Light dragging"));
@@ -1410,6 +1943,7 @@ void GLPreviewWidget::updateObjectDrag(const QPoint& screenPosition)
     }
 
     scene_.selectedObjectId = draggedObjectId_;
+    updateTurntableTarget();
 
     emit objectMoved(draggedObjectId_, newCenter.x, newCenter.y, newCenter.z);
     emit interactionStatusChanged(QStringLiteral("Object dragging"));
@@ -1423,6 +1957,66 @@ void GLPreviewWidget::finishObjectDrag()
     isDraggingLight_ = false;
     draggedObjectId_ = -1;
     draggedLightIndex_ = -1;
+}
+
+void GLPreviewWidget::pauseTurntableForUserInput()
+{
+    if (!camera_.turntableEnabled) {
+        return;
+    }
+
+    camera_.turntableEnabled = false;
+    turntablePausedByUserInputPending_ = true;
+    emit turntablePausedByUserInput();
+    emit interactionStatusChanged(QStringLiteral("Turntable paused by user input"));
+}
+
+void GLPreviewWidget::updateTurntableTarget()
+{
+    const tinyray::Vec3 center = sceneCenter();
+    tinyray::Vec3 selectedCenter;
+    const bool hasSelectedCenter = selectedObjectCenter(selectedCenter);
+    const tinyray::Vec3* selectedCenterPointer = hasSelectedCenter ? &selectedCenter : nullptr;
+    tinyray::Vec3 newTarget = camera_.resolvedTurntableTarget(center, selectedCenterPointer);
+
+    camera_.target = newTarget;
+}
+
+tinyray::Vec3 GLPreviewWidget::sceneCenter() const
+{
+    if (scene_.objects.empty()) {
+        return tinyray::Vec3(0.0, 0.0, 0.0);
+    }
+
+    tinyray::Vec3 sum(0.0, 0.0, 0.0);
+    int count = 0;
+    for (const auto& object : scene_.objects) {
+        if (!object) {
+            continue;
+        }
+        const tinyray::Vec3 position = objectPosition(object.get());
+        if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)) {
+            continue;
+        }
+        sum += position;
+        ++count;
+    }
+
+    if (count == 0) {
+        return tinyray::Vec3(0.0, 0.0, 0.0);
+    }
+    return sum / static_cast<double>(count);
+}
+
+bool GLPreviewWidget::selectedObjectCenter(tinyray::Vec3& center) const
+{
+    const tinyray::Object* object = scene_.objectById(selectedObjectId_);
+    if (object == nullptr) {
+        return false;
+    }
+
+    center = objectPosition(object);
+    return std::isfinite(center.x) && std::isfinite(center.y) && std::isfinite(center.z);
 }
 
 int GLPreviewWidget::pickLight(const tinyray::Ray& ray) const

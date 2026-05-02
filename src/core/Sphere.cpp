@@ -1,6 +1,10 @@
 #include "core/Sphere.h"
 
+#include <algorithm>
+
 #include <cmath>
+
+#include "core/MathUtils.h"
 
 namespace tinyray {
 
@@ -31,6 +35,10 @@ bool Sphere::intersect(const Ray& ray, double tMin, double tMax, HitRecord& reco
     record.t = root;
     record.point = ray.at(record.t);
     const Vec3 outwardNormal = (record.point - center) / radius;
+    const double theta = std::acos(std::clamp(-outwardNormal.y, -1.0, 1.0));
+    const double phi = std::atan2(-outwardNormal.z, outwardNormal.x) + pi;
+    record.u = phi / (2.0 * pi);
+    record.v = theta / pi;
     record.setFaceNormal(ray, outwardNormal);
     record.material = &material;
     record.hitObjectId = id();

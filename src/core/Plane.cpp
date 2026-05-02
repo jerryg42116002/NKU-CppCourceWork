@@ -18,6 +18,8 @@ bool Plane::intersect(const Ray& ray, double tMin, double tMax, HitRecord& recor
 
     record.t = root;
     record.point = ray.at(record.t);
+    record.u = record.point.x;
+    record.v = record.point.z;
     record.setFaceNormal(ray, normal);
     record.material = &material;
     record.hitObjectId = id();

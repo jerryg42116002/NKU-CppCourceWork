@@ -45,14 +45,22 @@ private slots:
     void handleLightChanged();
     void handleBloomChanged();
     void handleSoftShadowChanged();
+    void handleEnvironmentChanged();
+    void handleLoadEnvironmentImage();
+    void handleResetEnvironment();
+    void handleOverlayChanged();
     void chooseSphereAlbedo();
     void chooseSphereEmissionColor();
+    void chooseSphereTexture();
     void chooseBoxAlbedo();
     void chooseBoxEmissionColor();
+    void chooseBoxTexture();
     void chooseCylinderAlbedo();
     void chooseCylinderEmissionColor();
+    void chooseCylinderTexture();
     void choosePlaneAlbedo();
     void choosePlaneEmissionColor();
+    void choosePlaneTexture();
     void chooseLightColor();
 
 private:
@@ -68,6 +76,7 @@ private:
     void loadSelectedEditor();
     void emitSceneChanged();
     void syncBloomControls();
+    void syncEnvironmentControls();
 
     void setSphereEditor(const tinyray::Sphere& sphere);
     void setBoxEditor(const tinyray::Box& box);
@@ -121,6 +130,17 @@ private:
     QCheckBox* softShadowsEnabled_ = nullptr;
     QSpinBox* areaLightSamples_ = nullptr;
 
+    QComboBox* environmentMode_ = nullptr;
+    QPushButton* loadEnvironmentImageButton_ = nullptr;
+    QPushButton* resetEnvironmentButton_ = nullptr;
+    QDoubleSpinBox* environmentExposure_ = nullptr;
+    QDoubleSpinBox* environmentIntensity_ = nullptr;
+    QDoubleSpinBox* environmentRotationY_ = nullptr;
+
+    QCheckBox* overlayLabelsEnabled_ = nullptr;
+    QCheckBox* overlayShowPosition_ = nullptr;
+    QCheckBox* overlayShowMaterialInfo_ = nullptr;
+
     QCheckBox* bloomEnabled_ = nullptr;
     QDoubleSpinBox* bloomExposure_ = nullptr;
     QDoubleSpinBox* bloomThreshold_ = nullptr;
@@ -133,6 +153,12 @@ private:
     QDoubleSpinBox* sphereRadius_ = nullptr;
     QComboBox* sphereMaterialType_ = nullptr;
     QPushButton* sphereAlbedoButton_ = nullptr;
+    QCheckBox* sphereUseTexture_ = nullptr;
+    QPushButton* sphereTextureButton_ = nullptr;
+    QDoubleSpinBox* sphereTextureScale_ = nullptr;
+    QDoubleSpinBox* sphereTextureOffsetU_ = nullptr;
+    QDoubleSpinBox* sphereTextureOffsetV_ = nullptr;
+    QDoubleSpinBox* sphereTextureStrength_ = nullptr;
     QDoubleSpinBox* sphereRoughness_ = nullptr;
     QDoubleSpinBox* sphereRefractiveIndex_ = nullptr;
     QPushButton* sphereEmissionColorButton_ = nullptr;
@@ -148,6 +174,12 @@ private:
     QDoubleSpinBox* boxSizeZ_ = nullptr;
     QComboBox* boxMaterialType_ = nullptr;
     QPushButton* boxAlbedoButton_ = nullptr;
+    QCheckBox* boxUseTexture_ = nullptr;
+    QPushButton* boxTextureButton_ = nullptr;
+    QDoubleSpinBox* boxTextureScale_ = nullptr;
+    QDoubleSpinBox* boxTextureOffsetU_ = nullptr;
+    QDoubleSpinBox* boxTextureOffsetV_ = nullptr;
+    QDoubleSpinBox* boxTextureStrength_ = nullptr;
     QDoubleSpinBox* boxRoughness_ = nullptr;
     QDoubleSpinBox* boxRefractiveIndex_ = nullptr;
     QPushButton* boxEmissionColorButton_ = nullptr;
@@ -162,6 +194,12 @@ private:
     QDoubleSpinBox* cylinderHeight_ = nullptr;
     QComboBox* cylinderMaterialType_ = nullptr;
     QPushButton* cylinderAlbedoButton_ = nullptr;
+    QCheckBox* cylinderUseTexture_ = nullptr;
+    QPushButton* cylinderTextureButton_ = nullptr;
+    QDoubleSpinBox* cylinderTextureScale_ = nullptr;
+    QDoubleSpinBox* cylinderTextureOffsetU_ = nullptr;
+    QDoubleSpinBox* cylinderTextureOffsetV_ = nullptr;
+    QDoubleSpinBox* cylinderTextureStrength_ = nullptr;
     QDoubleSpinBox* cylinderRoughness_ = nullptr;
     QDoubleSpinBox* cylinderRefractiveIndex_ = nullptr;
     QPushButton* cylinderEmissionColorButton_ = nullptr;
@@ -177,6 +215,12 @@ private:
     QDoubleSpinBox* planeNormalZ_ = nullptr;
     QComboBox* planeMaterialType_ = nullptr;
     QPushButton* planeAlbedoButton_ = nullptr;
+    QCheckBox* planeUseTexture_ = nullptr;
+    QPushButton* planeTextureButton_ = nullptr;
+    QDoubleSpinBox* planeTextureScale_ = nullptr;
+    QDoubleSpinBox* planeTextureOffsetU_ = nullptr;
+    QDoubleSpinBox* planeTextureOffsetV_ = nullptr;
+    QDoubleSpinBox* planeTextureStrength_ = nullptr;
     QDoubleSpinBox* planeRoughness_ = nullptr;
     QDoubleSpinBox* planeRefractiveIndex_ = nullptr;
     QPushButton* planeEmissionColorButton_ = nullptr;

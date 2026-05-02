@@ -20,8 +20,10 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -59,6 +61,13 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](const QString& status) {
                 if (statusLabel_ != nullptr) {
                     statusLabel_->setText(status);
+                }
+            });
+    connect(realTimeRenderWidget_, &RealTimeRenderWidget::turntablePausedByUserInput,
+            this, [this]() {
+                setTurntableControlsRunning(false);
+                if (statusLabel_ != nullptr) {
+                    statusLabel_->setText(QStringLiteral("Turntable paused by user input"));
                 }
             });
 
@@ -173,6 +182,63 @@ void MainWindow::createControlPanel()
     settingsLayout->addRow(QStringLiteral("Threads"), threadsSpinBox_);
     settingsLayout->addRow(QStringLiteral("Drag Mode"), dragModeComboBox_);
 
+    auto* cameraGroup = new QGroupBox(QStringLiteral("Camera"), panel);
+    auto* cameraLayout = new QFormLayout(cameraGroup);
+    cameraLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+    startTurntableButton_ = new QPushButton(QStringLiteral("Start Turntable"), cameraGroup);
+    stopTurntableButton_ = new QPushButton(QStringLiteral("Stop Turntable"), cameraGroup);
+    auto* turntableButtonRow = new QWidget(cameraGroup);
+    auto* turntableButtonLayout = new QHBoxLayout(turntableButtonRow);
+    turntableButtonLayout->setContentsMargins(0, 0, 0, 0);
+    turntableButtonLayout->setSpacing(6);
+    turntableButtonLayout->addWidget(startTurntableButton_);
+    turntableButtonLayout->addWidget(stopTurntableButton_);
+
+    turntableSpeedSlider_ = new QSlider(Qt::Horizontal, cameraGroup);
+    turntableSpeedSlider_->setRange(0, 120);
+    turntableSpeedSlider_->setSingleStep(1);
+    turntableSpeedSlider_->setPageStep(5);
+    turntableSpeedSlider_->setValue(24);
+    turntableSpeedValueLabel_ = new QLabel(QStringLiteral("24 deg/s"), cameraGroup);
+    turntableSpeedValueLabel_->setMinimumWidth(72);
+    auto* turntableSpeedRow = new QWidget(cameraGroup);
+    auto* turntableSpeedLayout = new QHBoxLayout(turntableSpeedRow);
+    turntableSpeedLayout->setContentsMargins(0, 0, 0, 0);
+    turntableSpeedLayout->setSpacing(6);
+    turntableSpeedLayout->addWidget(turntableSpeedSlider_, 1);
+    turntableSpeedLayout->addWidget(turntableSpeedValueLabel_);
+
+    turntableDirectionComboBox_ = new QComboBox(cameraGroup);
+    turntableDirectionComboBox_->addItem(QStringLiteral("Clockwise"),
+                                         static_cast<int>(tinyray::TurntableDirection::Clockwise));
+    turntableDirectionComboBox_->addItem(QStringLiteral("Counterclockwise"),
+                                         static_cast<int>(tinyray::TurntableDirection::Counterclockwise));
+    turntableDirectionComboBox_->setCurrentIndex(1);
+
+    turntableTargetModeComboBox_ = new QComboBox(cameraGroup);
+    turntableTargetModeComboBox_->addItem(QStringLiteral("Scene Center"),
+                                          static_cast<int>(tinyray::TurntableTargetMode::SceneCenter));
+    turntableTargetModeComboBox_->addItem(QStringLiteral("Selected Object"),
+                                          static_cast<int>(tinyray::TurntableTargetMode::SelectedObject));
+    turntableTargetModeComboBox_->addItem(QStringLiteral("Custom Target"),
+                                          static_cast<int>(tinyray::TurntableTargetMode::CustomTarget));
+
+    resetViewButton_ = new QPushButton(QStringLiteral("Reset View"), cameraGroup);
+    focusSelectedButton_ = new QPushButton(QStringLiteral("Focus Selected Object"), cameraGroup);
+    auto* viewButtonRow = new QWidget(cameraGroup);
+    auto* viewButtonLayout = new QHBoxLayout(viewButtonRow);
+    viewButtonLayout->setContentsMargins(0, 0, 0, 0);
+    viewButtonLayout->setSpacing(6);
+    viewButtonLayout->addWidget(resetViewButton_);
+    viewButtonLayout->addWidget(focusSelectedButton_);
+
+    cameraLayout->addRow(QStringLiteral("Turntable"), turntableButtonRow);
+    cameraLayout->addRow(QStringLiteral("Speed"), turntableSpeedRow);
+    cameraLayout->addRow(QStringLiteral("Direction"), turntableDirectionComboBox_);
+    cameraLayout->addRow(QStringLiteral("Target Mode"), turntableTargetModeComboBox_);
+    cameraLayout->addRow(QStringLiteral("View"), viewButtonRow);
+
     scenePanel_ = new ScenePanel(panel);
     scenePanel_->setScene(scene_);
 
@@ -195,6 +261,7 @@ void MainWindow::createControlPanel()
     outputLayout->addWidget(clearButton_);
 
     panelLayout->addWidget(settingsGroup);
+    panelLayout->addWidget(cameraGroup);
     panelLayout->addWidget(scenePanel_, 1);
     panelLayout->addWidget(outputGroup);
 
@@ -219,8 +286,22 @@ void MainWindow::createControlPanel()
         realTimeRenderWidget_->setObjectDragMode(mode);
         statusLabel_->setText(QStringLiteral("Drag mode updated"));
     });
+    connect(startTurntableButton_, &QPushButton::clicked, this, &MainWindow::handleStartTurntable);
+    connect(stopTurntableButton_, &QPushButton::clicked, this, &MainWindow::handleStopTurntable);
+    connect(turntableSpeedSlider_, &QSlider::valueChanged,
+            this, &MainWindow::handleTurntableSpeedChanged);
+    connect(turntableDirectionComboBox_, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::handleTurntableDirectionChanged);
+    connect(turntableTargetModeComboBox_, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::handleTurntableTargetModeChanged);
+    connect(resetViewButton_, &QPushButton::clicked, this, &MainWindow::handleResetView);
+    connect(focusSelectedButton_, &QPushButton::clicked, this, &MainWindow::handleFocusSelectedObject);
 
     setRenderControlsEnabled(true);
+    setTurntableControlsRunning(false);
+    handleTurntableSpeedChanged(turntableSpeedSlider_->value());
+    handleTurntableDirectionChanged(turntableDirectionComboBox_->currentIndex());
+    handleTurntableTargetModeChanged(turntableTargetModeComboBox_->currentIndex());
 }
 
 void MainWindow::createStatusBar()
@@ -248,6 +329,16 @@ void MainWindow::setRenderControlsEnabled(bool enabled)
     stopButton_->setEnabled(!enabled);
 }
 
+void MainWindow::setTurntableControlsRunning(bool running)
+{
+    if (startTurntableButton_ != nullptr) {
+        startTurntableButton_->setEnabled(!running);
+    }
+    if (stopTurntableButton_ != nullptr) {
+        stopTurntableButton_->setEnabled(running);
+    }
+}
+
 void MainWindow::applyRenderSettings(const tinyray::RenderSettings& settings)
 {
     widthSpinBox_->setValue(std::clamp(settings.width, widthSpinBox_->minimum(), widthSpinBox_->maximum()));
@@ -271,6 +362,13 @@ tinyray::RenderSettings MainWindow::currentRenderSettings() const
     return settings;
 }
 
+void MainWindow::syncCurrentViewportCameraToScene()
+{
+    if (realTimeRenderWidget_ != nullptr) {
+        scene_.camera = realTimeRenderWidget_->currentCameraSnapshot();
+    }
+}
+
 void MainWindow::handleRender()
 {
     if (renderThread_.joinable()) {
@@ -278,6 +376,11 @@ void MainWindow::handleRender()
         return;
     }
 
+    if (realTimeRenderWidget_ != nullptr) {
+        realTimeRenderWidget_->setTurntableEnabled(false);
+        setTurntableControlsRunning(false);
+    }
+    syncCurrentViewportCameraToScene();
     const tinyray::RenderSettings settings = currentRenderSettings();
     const tinyray::Scene scene = scene_;
 
@@ -370,6 +473,8 @@ void MainWindow::handleClearImage()
 
 void MainWindow::handleSaveScene()
 {
+    syncCurrentViewportCameraToScene();
+
     const QString fileName = QFileDialog::getSaveFileName(
         this,
         QStringLiteral("Save Scene"),
@@ -419,6 +524,8 @@ void MainWindow::handleLoadScene()
     scene_ = loadedScene;
     scenePanel_->setScene(scene_);
     scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
+    realTimeRenderWidget_->setTurntableEnabled(false);
+    setTurntableControlsRunning(false);
     realTimeRenderWidget_->setScene(scene_);
     realTimeRenderWidget_->setSelectedObjectId(scene_.selectedObjectId);
     applyRenderSettings(loadedSettings);
@@ -442,11 +549,11 @@ void MainWindow::handleAbout()
 
 void MainWindow::handleSceneChanged(const tinyray::Scene& scene)
 {
-    const int previousSelection = scene_.selectedObjectId;
+    const int incomingSelection = scene.selectedObjectId;
     scene_ = scene;
-    if (previousSelection >= 0 && scene_.containsObjectId(previousSelection)) {
-        scene_.selectedObjectId = previousSelection;
-    } else if (scene_.selectedObjectId >= 0 && !scene_.containsObjectId(scene_.selectedObjectId)) {
+    if (incomingSelection >= 0 && scene_.containsObjectId(incomingSelection)) {
+        scene_.selectedObjectId = incomingSelection;
+    } else {
         scene_.selectedObjectId = -1;
     }
 
@@ -517,6 +624,107 @@ void MainWindow::handleRealTimeLightMoved(int lightIndex, double x, double y, do
     scenePanel_->setScene(scene_);
     scenePanel_->setSelectedLightIndex(lightIndex);
     statusLabel_->setText(QStringLiteral("Light dragging | Point Light %1").arg(lightIndex + 1));
+}
+
+void MainWindow::handleStartTurntable()
+{
+    if (realTimeRenderWidget_ == nullptr) {
+        return;
+    }
+
+    handleTurntableSpeedChanged(turntableSpeedSlider_ != nullptr ? turntableSpeedSlider_->value() : 24);
+    handleTurntableDirectionChanged(turntableDirectionComboBox_ != nullptr ? turntableDirectionComboBox_->currentIndex() : 1);
+    handleTurntableTargetModeChanged(turntableTargetModeComboBox_ != nullptr ? turntableTargetModeComboBox_->currentIndex() : 0);
+    realTimeRenderWidget_->setTurntableEnabled(true);
+    setTurntableControlsRunning(true);
+    statusLabel_->setText(QStringLiteral("Turntable started"));
+}
+
+void MainWindow::handleStopTurntable()
+{
+    if (realTimeRenderWidget_ != nullptr) {
+        realTimeRenderWidget_->setTurntableEnabled(false);
+    }
+    setTurntableControlsRunning(false);
+    statusLabel_->setText(QStringLiteral("Turntable stopped"));
+}
+
+void MainWindow::handleTurntableSpeedChanged(int value)
+{
+    const double speed = static_cast<double>(std::max(value, 0));
+    if (turntableSpeedValueLabel_ != nullptr) {
+        turntableSpeedValueLabel_->setText(QStringLiteral("%1 deg/s").arg(value));
+    }
+    if (realTimeRenderWidget_ != nullptr) {
+        realTimeRenderWidget_->setTurntableSpeed(speed);
+    }
+}
+
+void MainWindow::handleTurntableDirectionChanged(int index)
+{
+    if (realTimeRenderWidget_ == nullptr || turntableDirectionComboBox_ == nullptr) {
+        return;
+    }
+
+    const QVariant directionData = turntableDirectionComboBox_->itemData(index);
+    const int directionValue = directionData.isValid()
+        ? directionData.toInt()
+        : static_cast<int>(tinyray::TurntableDirection::Counterclockwise);
+    realTimeRenderWidget_->setTurntableDirection(
+        directionValue < 0
+            ? tinyray::TurntableDirection::Clockwise
+            : tinyray::TurntableDirection::Counterclockwise);
+}
+
+void MainWindow::handleTurntableTargetModeChanged(int index)
+{
+    if (realTimeRenderWidget_ == nullptr || turntableTargetModeComboBox_ == nullptr) {
+        return;
+    }
+
+    const QVariant modeData = turntableTargetModeComboBox_->itemData(index);
+    const int modeValue = modeData.isValid()
+        ? modeData.toInt()
+        : static_cast<int>(tinyray::TurntableTargetMode::SceneCenter);
+    realTimeRenderWidget_->setTurntableTargetMode(static_cast<tinyray::TurntableTargetMode>(modeValue));
+}
+
+void MainWindow::handleResetView()
+{
+    if (realTimeRenderWidget_ == nullptr) {
+        return;
+    }
+
+    realTimeRenderWidget_->setTurntableEnabled(false);
+    realTimeRenderWidget_->resetView();
+    setTurntableControlsRunning(false);
+    syncCurrentViewportCameraToScene();
+    highQualityImage_ = QImage();
+    statusLabel_->setText(QStringLiteral("Camera view reset"));
+}
+
+void MainWindow::handleFocusSelectedObject()
+{
+    if (realTimeRenderWidget_ == nullptr) {
+        return;
+    }
+
+    if (turntableTargetModeComboBox_ != nullptr) {
+        const int selectedObjectIndex = turntableTargetModeComboBox_->findData(
+            static_cast<int>(tinyray::TurntableTargetMode::SelectedObject));
+        if (selectedObjectIndex >= 0) {
+            turntableTargetModeComboBox_->setCurrentIndex(selectedObjectIndex);
+        }
+    }
+
+    if (!realTimeRenderWidget_->focusSelectedObject()) {
+        statusLabel_->setText(QStringLiteral("No selected object to focus"));
+        return;
+    }
+
+    syncCurrentViewportCameraToScene();
+    highQualityImage_ = QImage();
+    statusLabel_->setText(QStringLiteral("Focused selected object"));
 }
 
 void MainWindow::updateRenderProgress(int progress)

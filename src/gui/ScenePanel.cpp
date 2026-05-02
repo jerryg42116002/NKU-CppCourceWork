@@ -7,15 +7,19 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QLabel>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QVariant>
 #include <QVBoxLayout>
 
 #include "core/Box.h"
@@ -103,6 +107,7 @@ void ScenePanel::setScene(const tinyray::Scene& scene)
 {
     updating_ = true;
     scene_ = scene;
+    syncEnvironmentControls();
     syncBloomControls();
     rebuildObjectList();
     updating_ = false;
@@ -128,6 +133,36 @@ void ScenePanel::createUi()
     presetComboBox_->addItem(QStringLiteral("Glass Demo"), QStringLiteral("glass"));
     presetLayout->addWidget(presetComboBox_);
     layout->addWidget(presetGroup);
+
+    auto* environmentGroup = new QGroupBox(QStringLiteral("Environment"), this);
+    auto* environmentLayout = new QFormLayout(environmentGroup);
+    environmentMode_ = new QComboBox(environmentGroup);
+    environmentMode_->addItem(QStringLiteral("Gradient"), static_cast<int>(tinyray::EnvironmentMode::Gradient));
+    environmentMode_->addItem(QStringLiteral("Solid Color"), static_cast<int>(tinyray::EnvironmentMode::SolidColor));
+    environmentMode_->addItem(QStringLiteral("Image"), static_cast<int>(tinyray::EnvironmentMode::Image));
+    environmentMode_->addItem(QStringLiteral("HDR Image"), static_cast<int>(tinyray::EnvironmentMode::HDRImage));
+    loadEnvironmentImageButton_ = new QPushButton(QStringLiteral("Load Image"), environmentGroup);
+    resetEnvironmentButton_ = new QPushButton(QStringLiteral("Reset"), environmentGroup);
+    environmentExposure_ = createDoubleSpinBox(0.0, 8.0, 0.05);
+    environmentIntensity_ = createDoubleSpinBox(0.0, 8.0, 0.05);
+    environmentRotationY_ = createDoubleSpinBox(-6.283, 6.283, 0.05);
+    environmentLayout->addRow(QStringLiteral("Mode"), environmentMode_);
+    environmentLayout->addRow(QStringLiteral("Image"), loadEnvironmentImageButton_);
+    environmentLayout->addRow(QStringLiteral("Exposure"), environmentExposure_);
+    environmentLayout->addRow(QStringLiteral("Intensity"), environmentIntensity_);
+    environmentLayout->addRow(QStringLiteral("Rotation Y"), environmentRotationY_);
+    environmentLayout->addRow(QStringLiteral("Reset"), resetEnvironmentButton_);
+    layout->addWidget(environmentGroup);
+
+    auto* overlayGroup = new QGroupBox(QStringLiteral("Overlay"), this);
+    auto* overlayLayout = new QVBoxLayout(overlayGroup);
+    overlayLabelsEnabled_ = new QCheckBox(QStringLiteral("Show Overlay Labels"), overlayGroup);
+    overlayShowPosition_ = new QCheckBox(QStringLiteral("Show Position"), overlayGroup);
+    overlayShowMaterialInfo_ = new QCheckBox(QStringLiteral("Show Material Info"), overlayGroup);
+    overlayLayout->addWidget(overlayLabelsEnabled_);
+    overlayLayout->addWidget(overlayShowPosition_);
+    overlayLayout->addWidget(overlayShowMaterialInfo_);
+    layout->addWidget(overlayGroup);
 
     auto* postProcessGroup = new QGroupBox(QStringLiteral("Post Processing"), this);
     auto* postProcessLayout = new QFormLayout(postProcessGroup);
@@ -193,6 +228,12 @@ void ScenePanel::createUi()
     sphereMaterialType_ = new QComboBox(spherePage);
     sphereMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     sphereAlbedoButton_ = new QPushButton(spherePage);
+    sphereUseTexture_ = new QCheckBox(QStringLiteral("Enable Texture"), spherePage);
+    sphereTextureButton_ = new QPushButton(QStringLiteral("Load Texture"), spherePage);
+    sphereTextureScale_ = createDoubleSpinBox(0.001, 100.0, 0.25);
+    sphereTextureOffsetU_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    sphereTextureOffsetV_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    sphereTextureStrength_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     sphereRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     sphereRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
     sphereEmissionColorButton_ = new QPushButton(spherePage);
@@ -203,6 +244,12 @@ void ScenePanel::createUi()
     sphereLayout->addRow(QStringLiteral("Radius"), sphereRadius_);
     sphereLayout->addRow(QStringLiteral("Material"), sphereMaterialType_);
     sphereLayout->addRow(QStringLiteral("Albedo"), sphereAlbedoButton_);
+    sphereLayout->addRow(QStringLiteral("Texture"), sphereUseTexture_);
+    sphereLayout->addRow(QStringLiteral("Texture Path"), sphereTextureButton_);
+    sphereLayout->addRow(QStringLiteral("Texture Scale"), sphereTextureScale_);
+    sphereLayout->addRow(QStringLiteral("Texture Offset U"), sphereTextureOffsetU_);
+    sphereLayout->addRow(QStringLiteral("Texture Offset V"), sphereTextureOffsetV_);
+    sphereLayout->addRow(QStringLiteral("Texture Strength"), sphereTextureStrength_);
     sphereLayout->addRow(QStringLiteral("Roughness"), sphereRoughness_);
     sphereLayout->addRow(QStringLiteral("Refractive Index"), sphereRefractiveIndex_);
     sphereLayout->addRow(QStringLiteral("Emission Color"), sphereEmissionColorButton_);
@@ -220,6 +267,12 @@ void ScenePanel::createUi()
     boxMaterialType_ = new QComboBox(boxPage);
     boxMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     boxAlbedoButton_ = new QPushButton(boxPage);
+    boxUseTexture_ = new QCheckBox(QStringLiteral("Enable Texture"), boxPage);
+    boxTextureButton_ = new QPushButton(QStringLiteral("Load Texture"), boxPage);
+    boxTextureScale_ = createDoubleSpinBox(0.001, 100.0, 0.25);
+    boxTextureOffsetU_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    boxTextureOffsetV_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    boxTextureStrength_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     boxRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     boxRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
     boxEmissionColorButton_ = new QPushButton(boxPage);
@@ -232,6 +285,12 @@ void ScenePanel::createUi()
     boxLayout->addRow(QStringLiteral("Size Z"), boxSizeZ_);
     boxLayout->addRow(QStringLiteral("Material"), boxMaterialType_);
     boxLayout->addRow(QStringLiteral("Albedo"), boxAlbedoButton_);
+    boxLayout->addRow(QStringLiteral("Texture"), boxUseTexture_);
+    boxLayout->addRow(QStringLiteral("Texture Path"), boxTextureButton_);
+    boxLayout->addRow(QStringLiteral("Texture Scale"), boxTextureScale_);
+    boxLayout->addRow(QStringLiteral("Texture Offset U"), boxTextureOffsetU_);
+    boxLayout->addRow(QStringLiteral("Texture Offset V"), boxTextureOffsetV_);
+    boxLayout->addRow(QStringLiteral("Texture Strength"), boxTextureStrength_);
     boxLayout->addRow(QStringLiteral("Roughness"), boxRoughness_);
     boxLayout->addRow(QStringLiteral("Refractive Index"), boxRefractiveIndex_);
     boxLayout->addRow(QStringLiteral("Emission Color"), boxEmissionColorButton_);
@@ -248,6 +307,12 @@ void ScenePanel::createUi()
     cylinderMaterialType_ = new QComboBox(cylinderPage);
     cylinderMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     cylinderAlbedoButton_ = new QPushButton(cylinderPage);
+    cylinderUseTexture_ = new QCheckBox(QStringLiteral("Enable Texture"), cylinderPage);
+    cylinderTextureButton_ = new QPushButton(QStringLiteral("Load Texture"), cylinderPage);
+    cylinderTextureScale_ = createDoubleSpinBox(0.001, 100.0, 0.25);
+    cylinderTextureOffsetU_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    cylinderTextureOffsetV_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    cylinderTextureStrength_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     cylinderRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     cylinderRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
     cylinderEmissionColorButton_ = new QPushButton(cylinderPage);
@@ -259,6 +324,12 @@ void ScenePanel::createUi()
     cylinderLayout->addRow(QStringLiteral("Height"), cylinderHeight_);
     cylinderLayout->addRow(QStringLiteral("Material"), cylinderMaterialType_);
     cylinderLayout->addRow(QStringLiteral("Albedo"), cylinderAlbedoButton_);
+    cylinderLayout->addRow(QStringLiteral("Texture"), cylinderUseTexture_);
+    cylinderLayout->addRow(QStringLiteral("Texture Path"), cylinderTextureButton_);
+    cylinderLayout->addRow(QStringLiteral("Texture Scale"), cylinderTextureScale_);
+    cylinderLayout->addRow(QStringLiteral("Texture Offset U"), cylinderTextureOffsetU_);
+    cylinderLayout->addRow(QStringLiteral("Texture Offset V"), cylinderTextureOffsetV_);
+    cylinderLayout->addRow(QStringLiteral("Texture Strength"), cylinderTextureStrength_);
     cylinderLayout->addRow(QStringLiteral("Roughness"), cylinderRoughness_);
     cylinderLayout->addRow(QStringLiteral("Refractive Index"), cylinderRefractiveIndex_);
     cylinderLayout->addRow(QStringLiteral("Emission Color"), cylinderEmissionColorButton_);
@@ -276,6 +347,12 @@ void ScenePanel::createUi()
     planeMaterialType_ = new QComboBox(planePage);
     planeMaterialType_->addItems({QStringLiteral("Diffuse"), QStringLiteral("Metal"), QStringLiteral("Glass"), QStringLiteral("Emissive")});
     planeAlbedoButton_ = new QPushButton(planePage);
+    planeUseTexture_ = new QCheckBox(QStringLiteral("Enable Texture"), planePage);
+    planeTextureButton_ = new QPushButton(QStringLiteral("Load Texture"), planePage);
+    planeTextureScale_ = createDoubleSpinBox(0.001, 100.0, 0.25);
+    planeTextureOffsetU_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    planeTextureOffsetV_ = createDoubleSpinBox(-100.0, 100.0, 0.05);
+    planeTextureStrength_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     planeRoughness_ = createDoubleSpinBox(0.0, 1.0, 0.05);
     planeRefractiveIndex_ = createDoubleSpinBox(1.0, 3.0, 0.05);
     planeEmissionColorButton_ = new QPushButton(planePage);
@@ -288,6 +365,12 @@ void ScenePanel::createUi()
     planeLayout->addRow(QStringLiteral("Normal Z"), planeNormalZ_);
     planeLayout->addRow(QStringLiteral("Material"), planeMaterialType_);
     planeLayout->addRow(QStringLiteral("Albedo"), planeAlbedoButton_);
+    planeLayout->addRow(QStringLiteral("Texture"), planeUseTexture_);
+    planeLayout->addRow(QStringLiteral("Texture Path"), planeTextureButton_);
+    planeLayout->addRow(QStringLiteral("Texture Scale"), planeTextureScale_);
+    planeLayout->addRow(QStringLiteral("Texture Offset U"), planeTextureOffsetU_);
+    planeLayout->addRow(QStringLiteral("Texture Offset V"), planeTextureOffsetV_);
+    planeLayout->addRow(QStringLiteral("Texture Strength"), planeTextureStrength_);
     planeLayout->addRow(QStringLiteral("Roughness"), planeRoughness_);
     planeLayout->addRow(QStringLiteral("Refractive Index"), planeRefractiveIndex_);
     planeLayout->addRow(QStringLiteral("Emission Color"), planeEmissionColorButton_);
@@ -323,6 +406,15 @@ void ScenePanel::createUi()
 
     connect(presetComboBox_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &ScenePanel::handlePresetChanged);
+    connect(environmentMode_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleEnvironmentChanged);
+    connect(environmentExposure_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleEnvironmentChanged);
+    connect(environmentIntensity_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleEnvironmentChanged);
+    connect(environmentRotationY_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleEnvironmentChanged);
+    connect(loadEnvironmentImageButton_, &QPushButton::clicked, this, &ScenePanel::handleLoadEnvironmentImage);
+    connect(resetEnvironmentButton_, &QPushButton::clicked, this, &ScenePanel::handleResetEnvironment);
+    connect(overlayLabelsEnabled_, &QCheckBox::toggled, this, &ScenePanel::handleOverlayChanged);
+    connect(overlayShowPosition_, &QCheckBox::toggled, this, &ScenePanel::handleOverlayChanged);
+    connect(overlayShowMaterialInfo_, &QCheckBox::toggled, this, &ScenePanel::handleOverlayChanged);
     connect(bloomEnabled_, &QCheckBox::toggled, this, &ScenePanel::handleBloomChanged);
     connect(bloomExposure_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBloomChanged);
     connect(bloomThreshold_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBloomChanged);
@@ -339,33 +431,41 @@ void ScenePanel::createUi()
     connect(addAreaLightButton_, &QPushButton::clicked, this, &ScenePanel::handleAddAreaLight);
     connect(deleteButton_, &QPushButton::clicked, this, &ScenePanel::handleDeleteSelected);
 
-    for (QDoubleSpinBox* spinBox : {sphereCenterX_, sphereCenterY_, sphereCenterZ_, sphereRadius_, sphereRoughness_, sphereRefractiveIndex_, sphereEmissionStrength_}) {
+    for (QDoubleSpinBox* spinBox : {sphereCenterX_, sphereCenterY_, sphereCenterZ_, sphereRadius_, sphereRoughness_, sphereRefractiveIndex_, sphereEmissionStrength_, sphereTextureScale_, sphereTextureOffsetU_, sphereTextureOffsetV_, sphereTextureStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleSphereChanged);
     }
+    connect(sphereUseTexture_, &QCheckBox::toggled, this, &ScenePanel::handleSphereChanged);
     connect(sphereMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleSphereChanged);
     connect(sphereAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseSphereAlbedo);
     connect(sphereEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseSphereEmissionColor);
+    connect(sphereTextureButton_, &QPushButton::clicked, this, &ScenePanel::chooseSphereTexture);
 
-    for (QDoubleSpinBox* spinBox : {boxCenterX_, boxCenterY_, boxCenterZ_, boxSizeX_, boxSizeY_, boxSizeZ_, boxRoughness_, boxRefractiveIndex_, boxEmissionStrength_}) {
+    for (QDoubleSpinBox* spinBox : {boxCenterX_, boxCenterY_, boxCenterZ_, boxSizeX_, boxSizeY_, boxSizeZ_, boxRoughness_, boxRefractiveIndex_, boxEmissionStrength_, boxTextureScale_, boxTextureOffsetU_, boxTextureOffsetV_, boxTextureStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleBoxChanged);
     }
+    connect(boxUseTexture_, &QCheckBox::toggled, this, &ScenePanel::handleBoxChanged);
     connect(boxMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleBoxChanged);
     connect(boxAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseBoxAlbedo);
     connect(boxEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseBoxEmissionColor);
+    connect(boxTextureButton_, &QPushButton::clicked, this, &ScenePanel::chooseBoxTexture);
 
-    for (QDoubleSpinBox* spinBox : {cylinderCenterX_, cylinderCenterY_, cylinderCenterZ_, cylinderRadius_, cylinderHeight_, cylinderRoughness_, cylinderRefractiveIndex_, cylinderEmissionStrength_}) {
+    for (QDoubleSpinBox* spinBox : {cylinderCenterX_, cylinderCenterY_, cylinderCenterZ_, cylinderRadius_, cylinderHeight_, cylinderRoughness_, cylinderRefractiveIndex_, cylinderEmissionStrength_, cylinderTextureScale_, cylinderTextureOffsetU_, cylinderTextureOffsetV_, cylinderTextureStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleCylinderChanged);
     }
+    connect(cylinderUseTexture_, &QCheckBox::toggled, this, &ScenePanel::handleCylinderChanged);
     connect(cylinderMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handleCylinderChanged);
     connect(cylinderAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::chooseCylinderAlbedo);
     connect(cylinderEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::chooseCylinderEmissionColor);
+    connect(cylinderTextureButton_, &QPushButton::clicked, this, &ScenePanel::chooseCylinderTexture);
 
-    for (QDoubleSpinBox* spinBox : {planePointX_, planePointY_, planePointZ_, planeNormalX_, planeNormalY_, planeNormalZ_, planeRoughness_, planeRefractiveIndex_, planeEmissionStrength_}) {
+    for (QDoubleSpinBox* spinBox : {planePointX_, planePointY_, planePointZ_, planeNormalX_, planeNormalY_, planeNormalZ_, planeRoughness_, planeRefractiveIndex_, planeEmissionStrength_, planeTextureScale_, planeTextureOffsetU_, planeTextureOffsetV_, planeTextureStrength_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handlePlaneChanged);
     }
+    connect(planeUseTexture_, &QCheckBox::toggled, this, &ScenePanel::handlePlaneChanged);
     connect(planeMaterialType_, qOverload<int>(&QComboBox::currentIndexChanged), this, &ScenePanel::handlePlaneChanged);
     connect(planeAlbedoButton_, &QPushButton::clicked, this, &ScenePanel::choosePlaneAlbedo);
     connect(planeEmissionColorButton_, &QPushButton::clicked, this, &ScenePanel::choosePlaneEmissionColor);
+    connect(planeTextureButton_, &QPushButton::clicked, this, &ScenePanel::choosePlaneTexture);
 
     for (QDoubleSpinBox* spinBox : {lightPositionX_, lightPositionY_, lightPositionZ_, lightNormalX_, lightNormalY_, lightNormalZ_, lightWidth_, lightHeight_, lightIntensity_}) {
         connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ScenePanel::handleLightChanged);
@@ -394,6 +494,7 @@ void ScenePanel::handleSelectionChanged()
 {
     if (!updating_) {
         loadSelectedEditor();
+        emitSceneChanged();
     }
 }
 
@@ -601,6 +702,70 @@ void ScenePanel::handleSoftShadowChanged()
     emitSceneChanged();
 }
 
+void ScenePanel::handleEnvironmentChanged()
+{
+    if (updating_) {
+        return;
+    }
+
+    const QVariant modeData = environmentMode_->currentData();
+    const int modeValue = modeData.isValid()
+        ? modeData.toInt()
+        : static_cast<int>(tinyray::EnvironmentMode::Gradient);
+    scene_.environment.mode = static_cast<tinyray::EnvironmentMode>(modeValue);
+    scene_.environment.exposure = environmentExposure_->value();
+    scene_.environment.intensity = environmentIntensity_->value();
+    scene_.environment.rotationY = environmentRotationY_->value();
+    emitSceneChanged();
+}
+
+void ScenePanel::handleLoadEnvironmentImage()
+{
+    const QString fileName = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("Load Environment Image"),
+        QString(),
+        QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)"));
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    tinyray::Environment environment = scene_.environment;
+    if (!environment.loadImage(fileName)) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Environment Image"),
+                             QStringLiteral("Failed to load the selected environment image."));
+        return;
+    }
+
+    scene_.environment = environment;
+    syncEnvironmentControls();
+    emitSceneChanged();
+}
+
+void ScenePanel::handleResetEnvironment()
+{
+    if (updating_) {
+        return;
+    }
+
+    scene_.environment = tinyray::Environment();
+    syncEnvironmentControls();
+    emitSceneChanged();
+}
+
+void ScenePanel::handleOverlayChanged()
+{
+    if (updating_) {
+        return;
+    }
+
+    scene_.overlayLabelsEnabled = overlayLabelsEnabled_->isChecked();
+    scene_.overlayShowPosition = overlayShowPosition_->isChecked();
+    scene_.overlayShowMaterialInfo = overlayShowMaterialInfo_->isChecked();
+    emitSceneChanged();
+}
+
 void ScenePanel::chooseSphereAlbedo()
 {
     const QColor color = QColorDialog::getColor(sphereAlbedo_, this, QStringLiteral("Choose Albedo"));
@@ -637,6 +802,66 @@ void ScenePanel::choosePlaneAlbedo()
     if (color.isValid()) {
         planeAlbedo_ = color;
         updateColorButton(planeAlbedoButton_, planeAlbedo_);
+        handlePlaneChanged();
+    }
+}
+
+namespace {
+
+bool chooseTexturePath(QWidget* parent, QPushButton* button)
+{
+    const QString fileName = QFileDialog::getOpenFileName(
+        parent,
+        QStringLiteral("Load Texture"),
+        QString(),
+        QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)"));
+    if (fileName.isEmpty()) {
+        return false;
+    }
+
+    if (QImage(fileName).isNull()) {
+        QMessageBox::warning(parent,
+                             QStringLiteral("Texture"),
+                             QStringLiteral("Failed to load the selected texture image."));
+        return false;
+    }
+
+    button->setProperty("texturePath", fileName);
+    button->setText(QStringLiteral("Change Texture"));
+    button->setToolTip(fileName);
+    return true;
+}
+
+} // namespace
+
+void ScenePanel::chooseSphereTexture()
+{
+    if (chooseTexturePath(this, sphereTextureButton_)) {
+        sphereUseTexture_->setChecked(true);
+        handleSphereChanged();
+    }
+}
+
+void ScenePanel::chooseBoxTexture()
+{
+    if (chooseTexturePath(this, boxTextureButton_)) {
+        boxUseTexture_->setChecked(true);
+        handleBoxChanged();
+    }
+}
+
+void ScenePanel::chooseCylinderTexture()
+{
+    if (chooseTexturePath(this, cylinderTextureButton_)) {
+        cylinderUseTexture_->setChecked(true);
+        handleCylinderChanged();
+    }
+}
+
+void ScenePanel::choosePlaneTexture()
+{
+    if (chooseTexturePath(this, planeTextureButton_)) {
+        planeUseTexture_->setChecked(true);
         handlePlaneChanged();
     }
 }
@@ -704,6 +929,7 @@ void ScenePanel::loadSelectedEditor()
 {
     const QListWidgetItem* item = objectList_->currentItem();
     if (!item) {
+        scene_.selectedObjectId = -1;
         editorStack_->setCurrentIndex(0);
         return;
     }
@@ -713,6 +939,7 @@ void ScenePanel::loadSelectedEditor()
     updating_ = true;
     if (kind == "object" && index >= 0 && index < static_cast<int>(scene_.objects.size())) {
         const auto& object = scene_.objects[static_cast<std::size_t>(index)];
+        scene_.selectedObjectId = object ? object->id() : -1;
         if (const auto* sphere = dynamic_cast<const tinyray::Sphere*>(object.get())) {
             setSphereEditor(*sphere);
             editorStack_->setCurrentIndex(1);
@@ -729,9 +956,11 @@ void ScenePanel::loadSelectedEditor()
             editorStack_->setCurrentIndex(0);
         }
     } else if (kind == "light" && index >= 0 && index < static_cast<int>(scene_.lights.size())) {
+        scene_.selectedObjectId = -1;
         setLightEditor(scene_.lights[static_cast<std::size_t>(index)]);
         editorStack_->setCurrentIndex(5);
     } else {
+        scene_.selectedObjectId = -1;
         editorStack_->setCurrentIndex(0);
     }
     updating_ = false;
@@ -761,6 +990,32 @@ void ScenePanel::syncBloomControls()
     }
 }
 
+void ScenePanel::syncEnvironmentControls()
+{
+    if (!environmentMode_ || !environmentExposure_ || !environmentIntensity_ || !environmentRotationY_) {
+        return;
+    }
+
+    const int modeValue = static_cast<int>(scene_.environment.mode);
+    const int modeIndex = environmentMode_->findData(modeValue);
+    environmentMode_->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+    environmentExposure_->setValue(scene_.environment.exposure);
+    environmentIntensity_->setValue(scene_.environment.intensity);
+    environmentRotationY_->setValue(scene_.environment.rotationY);
+
+    if (loadEnvironmentImageButton_) {
+        loadEnvironmentImageButton_->setText(scene_.environment.imagePath.isEmpty()
+            ? QStringLiteral("Load Image")
+            : QStringLiteral("Change Image"));
+        loadEnvironmentImageButton_->setToolTip(scene_.environment.imagePath);
+    }
+    if (overlayLabelsEnabled_ && overlayShowPosition_ && overlayShowMaterialInfo_) {
+        overlayLabelsEnabled_->setChecked(scene_.overlayLabelsEnabled);
+        overlayShowPosition_->setChecked(scene_.overlayShowPosition);
+        overlayShowMaterialInfo_->setChecked(scene_.overlayShowMaterialInfo);
+    }
+}
+
 void ScenePanel::setSphereEditor(const tinyray::Sphere& sphere)
 {
     sphereCenterX_->setValue(sphere.center.x);
@@ -769,6 +1024,14 @@ void ScenePanel::setSphereEditor(const tinyray::Sphere& sphere)
     sphereRadius_->setValue(sphere.radius);
     writeMaterialToControls(sphere.material, sphereMaterialType_, sphereRoughness_,
                             sphereRefractiveIndex_, sphereAlbedo_, sphereAlbedoButton_);
+    sphereUseTexture_->setChecked(sphere.material.useTexture);
+    sphereTextureButton_->setProperty("texturePath", sphere.material.texturePath);
+    sphereTextureButton_->setText(sphere.material.texturePath.isEmpty() ? QStringLiteral("Checkerboard") : QStringLiteral("Change Texture"));
+    sphereTextureButton_->setToolTip(sphere.material.texturePath);
+    sphereTextureScale_->setValue(sphere.material.textureScale);
+    sphereTextureOffsetU_->setValue(sphere.material.textureOffsetU);
+    sphereTextureOffsetV_->setValue(sphere.material.textureOffsetV);
+    sphereTextureStrength_->setValue(sphere.material.textureStrength);
 }
 
 void ScenePanel::setBoxEditor(const tinyray::Box& box)
@@ -781,6 +1044,14 @@ void ScenePanel::setBoxEditor(const tinyray::Box& box)
     boxSizeZ_->setValue(box.size.z);
     writeMaterialToControls(box.material, boxMaterialType_, boxRoughness_,
                             boxRefractiveIndex_, boxAlbedo_, boxAlbedoButton_);
+    boxUseTexture_->setChecked(box.material.useTexture);
+    boxTextureButton_->setProperty("texturePath", box.material.texturePath);
+    boxTextureButton_->setText(box.material.texturePath.isEmpty() ? QStringLiteral("Checkerboard") : QStringLiteral("Change Texture"));
+    boxTextureButton_->setToolTip(box.material.texturePath);
+    boxTextureScale_->setValue(box.material.textureScale);
+    boxTextureOffsetU_->setValue(box.material.textureOffsetU);
+    boxTextureOffsetV_->setValue(box.material.textureOffsetV);
+    boxTextureStrength_->setValue(box.material.textureStrength);
 }
 
 void ScenePanel::setCylinderEditor(const tinyray::Cylinder& cylinder)
@@ -792,6 +1063,14 @@ void ScenePanel::setCylinderEditor(const tinyray::Cylinder& cylinder)
     cylinderHeight_->setValue(cylinder.height);
     writeMaterialToControls(cylinder.material, cylinderMaterialType_, cylinderRoughness_,
                             cylinderRefractiveIndex_, cylinderAlbedo_, cylinderAlbedoButton_);
+    cylinderUseTexture_->setChecked(cylinder.material.useTexture);
+    cylinderTextureButton_->setProperty("texturePath", cylinder.material.texturePath);
+    cylinderTextureButton_->setText(cylinder.material.texturePath.isEmpty() ? QStringLiteral("Checkerboard") : QStringLiteral("Change Texture"));
+    cylinderTextureButton_->setToolTip(cylinder.material.texturePath);
+    cylinderTextureScale_->setValue(cylinder.material.textureScale);
+    cylinderTextureOffsetU_->setValue(cylinder.material.textureOffsetU);
+    cylinderTextureOffsetV_->setValue(cylinder.material.textureOffsetV);
+    cylinderTextureStrength_->setValue(cylinder.material.textureStrength);
 }
 
 void ScenePanel::setPlaneEditor(const tinyray::Plane& plane)
@@ -804,6 +1083,14 @@ void ScenePanel::setPlaneEditor(const tinyray::Plane& plane)
     planeNormalZ_->setValue(plane.normal.z);
     writeMaterialToControls(plane.material, planeMaterialType_, planeRoughness_,
                             planeRefractiveIndex_, planeAlbedo_, planeAlbedoButton_);
+    planeUseTexture_->setChecked(plane.material.useTexture);
+    planeTextureButton_->setProperty("texturePath", plane.material.texturePath);
+    planeTextureButton_->setText(plane.material.texturePath.isEmpty() ? QStringLiteral("Checkerboard") : QStringLiteral("Change Texture"));
+    planeTextureButton_->setToolTip(plane.material.texturePath);
+    planeTextureScale_->setValue(plane.material.textureScale);
+    planeTextureOffsetU_->setValue(plane.material.textureOffsetU);
+    planeTextureOffsetV_->setValue(plane.material.textureOffsetV);
+    planeTextureStrength_->setValue(plane.material.textureStrength);
 }
 
 void ScenePanel::setLightEditor(const tinyray::Light& light)
@@ -924,6 +1211,14 @@ tinyray::Material ScenePanel::readSphereMaterial() const
     material.refractiveIndex = sphereRefractiveIndex_->value();
     material.emissionColor = colorToVec3(sphereEmissionColor_);
     material.emissionStrength = sphereEmissionStrength_->value();
+    material.useTexture = sphereUseTexture_->isChecked();
+    material.textureScale = sphereTextureScale_->value();
+    material.textureOffsetU = sphereTextureOffsetU_->value();
+    material.textureOffsetV = sphereTextureOffsetV_->value();
+    material.textureStrength = sphereTextureStrength_->value();
+    material.texturePath = sphereTextureButton_->property("texturePath").toString();
+    material.textureType = material.texturePath.isEmpty() ? tinyray::TextureType::Checkerboard : tinyray::TextureType::Image;
+    material.fallbackColor = material.albedo;
     return material;
 }
 
@@ -936,6 +1231,14 @@ tinyray::Material ScenePanel::readBoxMaterial() const
     material.refractiveIndex = boxRefractiveIndex_->value();
     material.emissionColor = colorToVec3(boxEmissionColor_);
     material.emissionStrength = boxEmissionStrength_->value();
+    material.useTexture = boxUseTexture_->isChecked();
+    material.textureScale = boxTextureScale_->value();
+    material.textureOffsetU = boxTextureOffsetU_->value();
+    material.textureOffsetV = boxTextureOffsetV_->value();
+    material.textureStrength = boxTextureStrength_->value();
+    material.texturePath = boxTextureButton_->property("texturePath").toString();
+    material.textureType = material.texturePath.isEmpty() ? tinyray::TextureType::Checkerboard : tinyray::TextureType::Image;
+    material.fallbackColor = material.albedo;
     return material;
 }
 
@@ -948,6 +1251,14 @@ tinyray::Material ScenePanel::readCylinderMaterial() const
     material.refractiveIndex = cylinderRefractiveIndex_->value();
     material.emissionColor = colorToVec3(cylinderEmissionColor_);
     material.emissionStrength = cylinderEmissionStrength_->value();
+    material.useTexture = cylinderUseTexture_->isChecked();
+    material.textureScale = cylinderTextureScale_->value();
+    material.textureOffsetU = cylinderTextureOffsetU_->value();
+    material.textureOffsetV = cylinderTextureOffsetV_->value();
+    material.textureStrength = cylinderTextureStrength_->value();
+    material.texturePath = cylinderTextureButton_->property("texturePath").toString();
+    material.textureType = material.texturePath.isEmpty() ? tinyray::TextureType::Checkerboard : tinyray::TextureType::Image;
+    material.fallbackColor = material.albedo;
     return material;
 }
 
@@ -960,6 +1271,14 @@ tinyray::Material ScenePanel::readPlaneMaterial() const
     material.refractiveIndex = planeRefractiveIndex_->value();
     material.emissionColor = colorToVec3(planeEmissionColor_);
     material.emissionStrength = planeEmissionStrength_->value();
+    material.useTexture = planeUseTexture_->isChecked();
+    material.textureScale = planeTextureScale_->value();
+    material.textureOffsetU = planeTextureOffsetU_->value();
+    material.textureOffsetV = planeTextureOffsetV_->value();
+    material.textureStrength = planeTextureStrength_->value();
+    material.texturePath = planeTextureButton_->property("texturePath").toString();
+    material.textureType = material.texturePath.isEmpty() ? tinyray::TextureType::Checkerboard : tinyray::TextureType::Image;
+    material.fallbackColor = material.albedo;
     return material;
 }
 

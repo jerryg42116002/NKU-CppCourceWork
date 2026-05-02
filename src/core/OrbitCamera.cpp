@@ -28,6 +28,21 @@ bool finite(const Vec3& value)
     return finite(value.x) && finite(value.y) && finite(value.z);
 }
 
+double wrapDegrees(double degrees)
+{
+    if (!finite(degrees)) {
+        return 0.0;
+    }
+
+    double wrapped = std::fmod(degrees, 360.0);
+    if (wrapped < -180.0) {
+        wrapped += 360.0;
+    } else if (wrapped >= 180.0) {
+        wrapped -= 360.0;
+    }
+    return wrapped;
+}
+
 QVector3D toQVector(const Vec3& value)
 {
     return QVector3D(static_cast<float>(value.x),
@@ -104,6 +119,39 @@ void OrbitCamera::pan(double deltaRight, double deltaUp)
     sanitize();
 }
 
+bool OrbitCamera::updateTurntable(double deltaTimeSeconds)
+{
+    sanitize();
+    if (!turntableEnabled
+        || !finite(deltaTimeSeconds)
+        || deltaTimeSeconds <= 0.0
+        || turntableSpeed <= 0.0) {
+        return false;
+    }
+
+    const double previousYaw = yaw;
+    const double directionSign = static_cast<int>(turntableDirection) < 0 ? -1.0 : 1.0;
+    yaw = wrapDegrees(yaw + directionSign * turntableSpeed * deltaTimeSeconds);
+    sanitize();
+    return std::abs(yaw - previousYaw) > 1.0e-9;
+}
+
+Vec3 OrbitCamera::resolvedTurntableTarget(const Vec3& sceneCenter, const Vec3* selectedObjectCenter) const
+{
+    const Vec3 safeSceneCenter = finite(sceneCenter) ? sceneCenter : Vec3(0.0, 0.0, 0.0);
+    if (turntableTargetMode == TurntableTargetMode::SelectedObject) {
+        return selectedObjectCenter != nullptr && finite(*selectedObjectCenter)
+            ? *selectedObjectCenter
+            : safeSceneCenter;
+    }
+
+    if (turntableTargetMode == TurntableTargetMode::CustomTarget) {
+        return finite(turntableCustomTarget) ? turntableCustomTarget : safeSceneCenter;
+    }
+
+    return safeSceneCenter;
+}
+
 bool OrbitCamera::isValid() const
 {
     return finite(target)
@@ -154,10 +202,18 @@ void OrbitCamera::sanitize()
     if (!finite(fov)) {
         fov = 45.0;
     }
+    if (!finite(turntableSpeed)) {
+        turntableSpeed = 24.0;
+    }
+    if (!finite(turntableCustomTarget)) {
+        turntableCustomTarget = target;
+    }
 
     distance = std::clamp(distance, minDistance, maxDistance);
+    yaw = wrapDegrees(yaw);
     pitch = std::clamp(pitch, minPitch, maxPitch);
     fov = std::clamp(fov, minFov, maxFov);
+    turntableSpeed = std::clamp(turntableSpeed, 0.0, 360.0);
 }
 
 } // namespace tinyray

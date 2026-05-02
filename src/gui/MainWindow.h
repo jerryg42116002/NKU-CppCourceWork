@@ -14,6 +14,7 @@ class QComboBox;
 class QPushButton;
 class QLabel;
 class QProgressBar;
+class QSlider;
 class QSpinBox;
 
 class RealTimeRenderWidget;
@@ -46,8 +47,10 @@ private:
     void createControlPanel();
     void createStatusBar();
     void setRenderControlsEnabled(bool enabled);
+    void setTurntableControlsRunning(bool running);
     void applyRenderSettings(const tinyray::RenderSettings& settings);
     tinyray::RenderSettings currentRenderSettings() const;
+    void syncCurrentViewportCameraToScene();
 
 private slots:
     void handleRender();
@@ -65,6 +68,13 @@ private slots:
                              int progress,
                              double elapsedSeconds);
     void handleRenderFinished(const QImage& image, bool stopped);
+    void handleStartTurntable();
+    void handleStopTurntable();
+    void handleTurntableSpeedChanged(int value);
+    void handleTurntableDirectionChanged(int index);
+    void handleTurntableTargetModeChanged(int index);
+    void handleResetView();
+    void handleFocusSelectedObject();
 
 private:
     RealTimeRenderWidget* realTimeRenderWidget_ = nullptr;
@@ -76,6 +86,10 @@ private:
     QSpinBox* maxDepthSpinBox_ = nullptr;
     QSpinBox* threadsSpinBox_ = nullptr;
     QComboBox* dragModeComboBox_ = nullptr;
+    QSlider* turntableSpeedSlider_ = nullptr;
+    QLabel* turntableSpeedValueLabel_ = nullptr;
+    QComboBox* turntableDirectionComboBox_ = nullptr;
+    QComboBox* turntableTargetModeComboBox_ = nullptr;
 
     QPushButton* renderButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
@@ -83,6 +97,10 @@ private:
     QPushButton* saveSceneButton_ = nullptr;
     QPushButton* loadSceneButton_ = nullptr;
     QPushButton* clearButton_ = nullptr;
+    QPushButton* startTurntableButton_ = nullptr;
+    QPushButton* stopTurntableButton_ = nullptr;
+    QPushButton* resetViewButton_ = nullptr;
+    QPushButton* focusSelectedButton_ = nullptr;
 
     QLabel* statusLabel_ = nullptr;
     QProgressBar* progressBar_ = nullptr;

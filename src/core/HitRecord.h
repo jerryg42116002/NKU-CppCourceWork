@@ -12,6 +12,8 @@ public:
     Vec3 point;
     Vec3 normal;
     double t = 0.0;
+    double u = 0.0;
+    double v = 0.0;
     const Material* material = nullptr;
     int hitObjectId = -1;
     bool frontFace = true;

@@ -46,7 +46,7 @@ Vec3 RayTracer::rayColor(const Ray& ray, const Scene& scene, int depth)
 
     HitRecord record;
     if (!scene.intersect(ray, shadowEpsilon_, infinity, record)) {
-        return backgroundColor(ray);
+        return scene.environment.sample(ray.direction);
     }
 
     const Material* material = record.material;
@@ -80,7 +80,7 @@ void RayTracer::setShadowEpsilon(double shadowEpsilon)
 Vec3 RayTracer::shadeDiffuse(const HitRecord& record, const Scene& scene) const
 {
     const Material* material = record.material;
-    const Vec3 albedo = material ? material->albedo : Vec3(0.8, 0.8, 0.8);
+    const Vec3 albedo = material ? material->baseColorAt(record.u, record.v) : Vec3(0.8, 0.8, 0.8);
 
     Vec3 color = ambientLight_ * albedo;
 
@@ -155,7 +155,7 @@ Vec3 RayTracer::shadeDiffuse(const HitRecord& record, const Scene& scene) const
 Vec3 RayTracer::shadeMetal(const Ray& ray, const HitRecord& record, const Scene& scene, int depth)
 {
     const Material* material = record.material;
-    const Vec3 albedo = material ? material->albedo : Vec3(0.8, 0.8, 0.8);
+    const Vec3 albedo = material ? material->baseColorAt(record.u, record.v) : Vec3(0.8, 0.8, 0.8);
     const double roughness = material ? material->clampedRoughness() : 0.0;
 
     const Vec3 reflected = reflect(ray.direction.normalized(), record.normal);
@@ -172,7 +172,7 @@ Vec3 RayTracer::shadeMetal(const Ray& ray, const HitRecord& record, const Scene&
 Vec3 RayTracer::shadeGlass(const Ray& ray, const HitRecord& record, const Scene& scene, int depth)
 {
     const Material* material = record.material;
-    const Vec3 albedo = material ? material->albedo : Vec3(1.0, 1.0, 1.0);
+    const Vec3 albedo = material ? material->baseColorAt(record.u, record.v) : Vec3(1.0, 1.0, 1.0);
     const double refractiveIndex = material ? material->safeRefractiveIndex() : 1.5;
 
     const Vec3 unitDirection = ray.direction.normalized();

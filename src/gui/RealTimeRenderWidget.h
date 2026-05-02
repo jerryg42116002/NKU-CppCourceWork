@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QElapsedTimer>
+#include <QTimer>
+
 #include "gui/GLPreviewWidget.h"
 
 class RealTimeRenderWidget : public GLPreviewWidget
@@ -8,4 +11,11 @@ class RealTimeRenderWidget : public GLPreviewWidget
 
 public:
     explicit RealTimeRenderWidget(QWidget* parent = nullptr);
+
+private slots:
+    void handleTurntableTick();
+
+private:
+    QTimer turntableTimer_;
+    QElapsedTimer turntableClock_;
 };

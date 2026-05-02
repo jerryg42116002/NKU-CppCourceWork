@@ -17,7 +17,9 @@
 #include "core/RayTracer.h"
 #include "core/Scene.h"
 #include "core/Sphere.h"
+#include "core/Texture.h"
 #include "interaction/Picking.h"
+#include "interaction/OverlayProjector.h"
 #include "gui/MainWindow.h"
 
 namespace {
@@ -53,6 +55,86 @@ int runSelfTest()
         return 1;
     }
 
+    tinyray::OrbitCamera turntableCamera;
+    const double originalPitch = turntableCamera.pitch;
+    const double originalDistance = turntableCamera.distance;
+    const double originalFov = turntableCamera.fov;
+    turntableCamera.turntableEnabled = true;
+    turntableCamera.turntableSpeed = 30.0;
+    turntableCamera.turntableDirection = tinyray::TurntableDirection::Counterclockwise;
+    const double startingYaw = turntableCamera.yaw;
+    if (!turntableCamera.updateTurntable(0.5)
+        || turntableCamera.yaw <= startingYaw
+        || std::abs(turntableCamera.pitch - originalPitch) > 1.0e-9
+        || std::abs(turntableCamera.distance - originalDistance) > 1.0e-9
+        || std::abs(turntableCamera.fov - originalFov) > 1.0e-9
+        || !turntableCamera.isValid()
+        || !finite(turntableCamera.position())) {
+        std::cerr << "Turntable update did not advance yaw safely.\n";
+        return 1;
+    }
+
+    const double yawAfterCounterclockwise = turntableCamera.yaw;
+    turntableCamera.turntableSpeed = 0.0;
+    if (turntableCamera.updateTurntable(1.0)
+        || std::abs(turntableCamera.yaw - yawAfterCounterclockwise) > 1.0e-9) {
+        std::cerr << "Turntable speed zero changed yaw.\n";
+        return 1;
+    }
+
+    turntableCamera.yaw = 0.0;
+    turntableCamera.turntableSpeed = 20.0;
+    turntableCamera.turntableDirection = tinyray::TurntableDirection::Clockwise;
+    if (!turntableCamera.updateTurntable(0.5) || turntableCamera.yaw >= 0.0) {
+        std::cerr << "Clockwise turntable direction did not decrease yaw.\n";
+        return 1;
+    }
+
+    turntableCamera.yaw = 179.0;
+    turntableCamera.turntableDirection = tinyray::TurntableDirection::Counterclockwise;
+    if (!turntableCamera.updateTurntable(1.0)
+        || turntableCamera.yaw < -180.0
+        || turntableCamera.yaw >= 180.0
+        || !turntableCamera.isValid()
+        || !finite(turntableCamera.position())) {
+        std::cerr << "Turntable yaw wrap produced an invalid camera.\n";
+        return 1;
+    }
+
+    const tinyray::Vec3 sceneCenter(1.0, 0.5, -2.0);
+    const tinyray::Vec3 selectedCenter(3.0, 1.0, -4.0);
+    turntableCamera.turntableTargetMode = tinyray::TurntableTargetMode::SelectedObject;
+    const tinyray::Vec3 fallbackTarget = turntableCamera.resolvedTurntableTarget(sceneCenter, nullptr);
+    const tinyray::Vec3 selectedTarget = turntableCamera.resolvedTurntableTarget(sceneCenter, &selectedCenter);
+    if (!finite(fallbackTarget)
+        || std::abs(fallbackTarget.x - sceneCenter.x) > 1.0e-9
+        || std::abs(fallbackTarget.y - sceneCenter.y) > 1.0e-9
+        || std::abs(fallbackTarget.z - sceneCenter.z) > 1.0e-9
+        || !finite(selectedTarget)
+        || std::abs(selectedTarget.x - selectedCenter.x) > 1.0e-9
+        || std::abs(selectedTarget.y - selectedCenter.y) > 1.0e-9
+        || std::abs(selectedTarget.z - selectedCenter.z) > 1.0e-9) {
+        std::cerr << "Turntable target mode did not safely resolve selected-object fallback.\n";
+        return 1;
+    }
+
+    tinyray::OrbitCamera overlayCamera;
+    const tinyray::ScreenProjection overlayProjection =
+        tinyray::worldToScreen(overlayCamera.target, QSize(800, 450), overlayCamera);
+    if (!overlayProjection.visible
+        || !std::isfinite(overlayProjection.position.x())
+        || !std::isfinite(overlayProjection.position.y())) {
+        std::cerr << "Overlay world-to-screen projection failed for a visible point.\n";
+        return 1;
+    }
+
+    const tinyray::Vec3 cameraPosition = overlayCamera.position();
+    const tinyray::Vec3 behindPoint = cameraPosition - (overlayCamera.target - cameraPosition);
+    if (tinyray::worldToScreen(behindPoint, QSize(800, 450), overlayCamera).visible) {
+        std::cerr << "Overlay projector reported a point behind the camera as visible.\n";
+        return 1;
+    }
+
     const tinyray::Ray pickingRay = tinyray::makePickingRay(QPoint(400, 225),
                                                             QSize(800, 450),
                                                             camera);
@@ -81,6 +163,12 @@ int runSelfTest()
 
     pickScene.addObject(std::move(hitSphere));
     pickScene.addObject(std::move(sideSphere));
+
+    if (pickScene.objectLabel(hitSphereId).isEmpty()
+        || pickScene.objectLabel(-12345).isEmpty()) {
+        std::cerr << "Overlay object labels are empty or unsafe for missing selection.\n";
+        return 1;
+    }
 
     tinyray::HitRecord hitRecord;
     const tinyray::Ray hitRay(tinyray::Vec3(0.0, 0.0, 0.0),
@@ -158,6 +246,10 @@ int runSelfTest()
         return 1;
     }
     editedSphere->center = tinyray::Vec3(4.0, 0.0, -4.0);
+    if (std::abs(dynamic_cast<tinyray::Sphere*>(movingScene.objectById(movingSphereId))->center.x - 4.0) > 1.0e-9) {
+        std::cerr << "Overlay data source did not reflect object position changes.\n";
+        return 1;
+    }
 
     tinyray::HitRecord afterMoveOldRayRecord;
     if (movingScene.intersect(oldCenterRay, 0.001, 1000.0, afterMoveOldRayRecord)) {
@@ -246,6 +338,135 @@ int runSelfTest()
         || !std::isfinite(bloomSettings.safeStrength())
         || bloomSettings.safeBlurPassCount() <= 0) {
         std::cerr << "Bloom settings are invalid.\n";
+        return 1;
+    }
+
+    tinyray::Environment environment;
+    if (!finite(environment.sample(tinyray::Vec3(0.0, 1.0, 0.0)))) {
+        std::cerr << "Default environment returned an invalid color.\n";
+        return 1;
+    }
+
+    environment.mode = tinyray::EnvironmentMode::SolidColor;
+    environment.solidColor = tinyray::Vec3(0.2, 0.3, 0.4);
+    const tinyray::Vec3 solidEnvironmentColor = environment.sample(tinyray::Vec3(1.0, 0.0, 0.0));
+    if (!finite(solidEnvironmentColor)
+        || std::abs(solidEnvironmentColor.x - 0.2) > 1.0e-9
+        || std::abs(solidEnvironmentColor.y - 0.3) > 1.0e-9
+        || std::abs(solidEnvironmentColor.z - 0.4) > 1.0e-9) {
+        std::cerr << "Solid environment did not return the configured color.\n";
+        return 1;
+    }
+
+    environment.mode = tinyray::EnvironmentMode::Image;
+    environment.imagePath = QStringLiteral("__missing_environment_image__.png");
+    const tinyray::Vec3 fallbackEnvironmentColor = environment.sample(tinyray::Vec3(0.0, 1.0, 0.0));
+    if (!finite(fallbackEnvironmentColor)) {
+        std::cerr << "Missing environment image did not safely fall back.\n";
+        return 1;
+    }
+
+    tinyray::Scene environmentScene;
+    environmentScene.environment.mode = tinyray::EnvironmentMode::SolidColor;
+    environmentScene.environment.solidColor = tinyray::Vec3(0.12, 0.23, 0.34);
+    tinyray::Scene environmentSnapshot = environmentScene;
+    if (environmentSnapshot.environment.mode != tinyray::EnvironmentMode::SolidColor
+        || std::abs(environmentSnapshot.environment.solidColor.y - 0.23) > 1.0e-9) {
+        std::cerr << "Scene snapshot did not preserve environment settings.\n";
+        return 1;
+    }
+
+    tinyray::RayTracer environmentTracer;
+    const tinyray::Vec3 missEnvironmentColor =
+        environmentTracer.trace(tinyray::Ray(tinyray::Vec3(0.0, 0.0, 0.0),
+                                             tinyray::Vec3(0.0, 1.0, 0.0)),
+                                environmentScene,
+                                4);
+    if (!finite(missEnvironmentColor)
+        || std::abs(missEnvironmentColor.x - 0.12) > 1.0e-9
+        || std::abs(missEnvironmentColor.y - 0.23) > 1.0e-9
+        || std::abs(missEnvironmentColor.z - 0.34) > 1.0e-9) {
+        std::cerr << "CPU ray tracer did not return environment color for miss rays.\n";
+        return 1;
+    }
+
+    tinyray::Texture checkerTexture;
+    checkerTexture.type = tinyray::TextureType::Checkerboard;
+    checkerTexture.scale = 2.0;
+    checkerTexture.colorA = tinyray::Vec3(1.0, 1.0, 1.0);
+    checkerTexture.colorB = tinyray::Vec3(0.0, 0.0, 0.0);
+    const tinyray::Vec3 checkerA = checkerTexture.sample(0.10, 0.10, tinyray::Vec3(0.5, 0.5, 0.5));
+    const tinyray::Vec3 checkerB = checkerTexture.sample(0.60, 0.10, tinyray::Vec3(0.5, 0.5, 0.5));
+    if (!finite(checkerA)
+        || !finite(checkerB)
+        || (checkerA - checkerB).lengthSquared() <= 1.0e-9) {
+        std::cerr << "Checkerboard texture did not produce alternating colors.\n";
+        return 1;
+    }
+
+    tinyray::Texture missingTexture;
+    missingTexture.type = tinyray::TextureType::Image;
+    missingTexture.imagePath = QStringLiteral("__missing_texture_image__.png");
+    const tinyray::Vec3 missingTextureColor =
+        missingTexture.sample(0.25, 0.75, tinyray::Vec3(0.25, 0.50, 0.75));
+    if (!finite(missingTextureColor)
+        || std::abs(missingTextureColor.y - 0.50) > 1.0e-9) {
+        std::cerr << "Missing image texture did not safely return fallback color.\n";
+        return 1;
+    }
+
+    tinyray::Sphere uvSphere(tinyray::Vec3(0.0, 0.0, -3.0), 1.0, tinyray::Material());
+    tinyray::HitRecord sphereUvRecord;
+    if (!uvSphere.intersect(tinyray::Ray(tinyray::Vec3(0.0, 0.0, 0.0),
+                                         tinyray::Vec3(0.0, 0.0, -1.0)),
+                            0.001,
+                            1000.0,
+                            sphereUvRecord)
+        || sphereUvRecord.u < 0.0 || sphereUvRecord.u > 1.0
+        || sphereUvRecord.v < 0.0 || sphereUvRecord.v > 1.0) {
+        std::cerr << "Sphere intersection did not produce legal UV coordinates.\n";
+        return 1;
+    }
+
+    tinyray::Plane uvPlane(tinyray::Vec3(0.0, -1.0, 0.0),
+                           tinyray::Vec3(0.0, 1.0, 0.0),
+                           tinyray::Material());
+    tinyray::HitRecord planeUvRecord;
+    if (!uvPlane.intersect(tinyray::Ray(tinyray::Vec3(0.25, 0.0, -0.75),
+                                        tinyray::Vec3(0.0, -1.0, 0.0)),
+                           0.001,
+                           1000.0,
+                           planeUvRecord)
+        || !std::isfinite(planeUvRecord.u)
+        || !std::isfinite(planeUvRecord.v)) {
+        std::cerr << "Plane intersection did not produce finite UV coordinates.\n";
+        return 1;
+    }
+
+    tinyray::Material texturedMaterial;
+    texturedMaterial.useTexture = true;
+    texturedMaterial.textureType = tinyray::TextureType::Checkerboard;
+    texturedMaterial.textureScale = 2.0;
+    texturedMaterial.textureStrength = 1.0;
+    texturedMaterial.checkerColorA = tinyray::Vec3(1.0, 1.0, 1.0);
+    texturedMaterial.checkerColorB = tinyray::Vec3(0.0, 0.0, 0.0);
+    if ((texturedMaterial.baseColorAt(0.10, 0.10) - texturedMaterial.baseColorAt(0.60, 0.10)).lengthSquared() <= 1.0e-9) {
+        std::cerr << "Textured material did not use checkerboard sample color.\n";
+        return 1;
+    }
+
+    tinyray::Scene texturedScene;
+    texturedScene.addPlane(tinyray::Plane(tinyray::Vec3(0.0, -1.0, 0.0),
+                                          tinyray::Vec3(0.0, 1.0, 0.0),
+                                          texturedMaterial));
+    tinyray::Scene texturedSnapshot = texturedScene;
+    const auto* texturedPlane = dynamic_cast<const tinyray::Plane*>(
+        texturedSnapshot.objects.empty() ? nullptr : texturedSnapshot.objects.front().get());
+    if (!texturedPlane
+        || !texturedPlane->material.useTexture
+        || texturedPlane->material.textureType != tinyray::TextureType::Checkerboard
+        || std::abs(texturedPlane->material.textureScale - texturedMaterial.textureScale) > 1.0e-9) {
+        std::cerr << "Scene snapshot did not preserve texture parameters.\n";
         return 1;
     }
 

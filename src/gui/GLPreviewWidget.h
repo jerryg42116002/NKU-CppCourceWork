@@ -28,6 +28,18 @@ public:
     void setScene(const tinyray::Scene& scene);
     void setSelectedObjectId(int objectId);
     void setObjectDragMode(tinyray::ObjectDragMode mode);
+    void setTurntableEnabled(bool enabled);
+    bool turntableEnabled() const;
+    void setTurntableSpeed(double degreesPerSecond);
+    double turntableSpeed() const;
+    void setTurntableDirection(tinyray::TurntableDirection direction);
+    void setTurntableTargetMode(tinyray::TurntableTargetMode mode);
+    tinyray::TurntableTargetMode turntableTargetMode() const;
+    void setTurntableCustomTarget(const tinyray::Vec3& target);
+    void advanceTurntable(double deltaTimeSeconds);
+    void resetView();
+    bool focusSelectedObject();
+    tinyray::Camera currentCameraSnapshot() const;
     int selectedObjectId() const;
     const tinyray::OrbitCamera& orbitCamera() const;
 
@@ -36,6 +48,7 @@ signals:
     void lightSelected(int lightIndex);
     void objectMoved(int objectId, double x, double y, double z);
     void lightMoved(int lightIndex, double x, double y, double z);
+    void turntablePausedByUserInput();
     void interactionStatusChanged(const QString& status);
 
 protected:
@@ -66,6 +79,7 @@ private:
     void uploadPathTraceScene(QOpenGLShaderProgram& program);
     void drawFullScreenTriangle(QOpenGLShaderProgram& program);
     void drawLightMarkersOverlay();
+    void drawOverlayLabels();
     void drawScene();
     void drawBox(const tinyray::Box& box);
     void drawCylinder(const tinyray::Cylinder& cylinder);
@@ -78,6 +92,10 @@ private:
     bool beginObjectDrag(const QPoint& screenPosition);
     void updateObjectDrag(const QPoint& screenPosition);
     void finishObjectDrag();
+    void pauseTurntableForUserInput();
+    void updateTurntableTarget();
+    tinyray::Vec3 sceneCenter() const;
+    bool selectedObjectCenter(tinyray::Vec3& center) const;
     int pickLight(const tinyray::Ray& ray) const;
     bool draggableObjectCenter(int objectId, tinyray::Vec3& center) const;
     bool setDraggableObjectCenter(int objectId, const tinyray::Vec3& center);
@@ -101,6 +119,7 @@ private:
     int draggedLightIndex_ = -1;
     bool isDraggingObject_ = false;
     bool isDraggingLight_ = false;
+    bool turntablePausedByUserInputPending_ = false;
     tinyray::Vec3 dragStartObjectCenter_;
     tinyray::Vec3 dragStartGroundPoint_;
     tinyray::Vec3 dragOffset_;

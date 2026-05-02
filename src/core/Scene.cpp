@@ -15,8 +15,12 @@ Scene& Scene::operator=(const Scene& other)
 
     camera = other.camera;
     bloomSettings = other.bloomSettings;
+    environment = other.environment;
     softShadowsEnabled = other.softShadowsEnabled;
     areaLightSamples = other.areaLightSamples;
+    overlayLabelsEnabled = other.overlayLabelsEnabled;
+    overlayShowPosition = other.overlayShowPosition;
+    overlayShowMaterialInfo = other.overlayShowMaterialInfo;
     selectedObjectId = other.selectedObjectId;
     lights = other.lights;
     objects.clear();
@@ -215,9 +219,26 @@ Scene Scene::createColoredLightsDemo()
     scene.bloomSettings.blurPassCount = 7;
     scene.softShadowsEnabled = true;
     scene.areaLightSamples = 16;
+    scene.overlayLabelsEnabled = true;
+    scene.overlayShowPosition = true;
+    scene.overlayShowMaterialInfo = true;
+    scene.environment.mode = EnvironmentMode::Gradient;
+    scene.environment.topColor = Vec3(0.05, 0.08, 0.16);
+    scene.environment.bottomColor = Vec3(0.42, 0.48, 0.58);
+    scene.environment.solidColor = Vec3(0.04, 0.045, 0.055);
+    scene.environment.exposure = 1.0;
+    scene.environment.intensity = 1.0;
+    scene.environment.rotationY = 0.0;
 
     Material groundMaterial;
     groundMaterial.albedo = Vec3(0.18, 0.19, 0.22);
+    groundMaterial.useTexture = true;
+    groundMaterial.textureType = TextureType::Checkerboard;
+    groundMaterial.textureScale = 5.5;
+    groundMaterial.textureStrength = 1.0;
+    groundMaterial.fallbackColor = groundMaterial.albedo;
+    groundMaterial.checkerColorA = Vec3(0.72, 0.72, 0.68);
+    groundMaterial.checkerColorB = Vec3(0.12, 0.13, 0.15);
 
     Material redMaterial;
     redMaterial.albedo = Vec3(0.95, 0.20, 0.18);

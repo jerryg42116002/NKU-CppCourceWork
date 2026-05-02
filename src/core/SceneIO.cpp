@@ -60,6 +60,87 @@ MaterialType materialTypeFromString(const QString& value)
     return MaterialType::Diffuse;
 }
 
+QString environmentModeToString(EnvironmentMode mode)
+{
+    switch (mode) {
+    case EnvironmentMode::SolidColor:
+        return "SolidColor";
+    case EnvironmentMode::Image:
+        return "Image";
+    case EnvironmentMode::HDRImage:
+        return "HDRImage";
+    case EnvironmentMode::Gradient:
+    default:
+        return "Gradient";
+    }
+}
+
+EnvironmentMode environmentModeFromString(const QString& value)
+{
+    if (value.compare(QStringLiteral("SolidColor"), Qt::CaseInsensitive) == 0) {
+        return EnvironmentMode::SolidColor;
+    }
+    if (value.compare(QStringLiteral("Image"), Qt::CaseInsensitive) == 0) {
+        return EnvironmentMode::Image;
+    }
+    if (value.compare(QStringLiteral("HDRImage"), Qt::CaseInsensitive) == 0) {
+        return EnvironmentMode::HDRImage;
+    }
+    return EnvironmentMode::Gradient;
+}
+
+QJsonObject environmentToJson(const Environment& environment)
+{
+    QJsonObject object;
+    object["mode"] = environmentModeToString(environment.mode);
+    object["topColor"] = vecToJson(environment.topColor);
+    object["bottomColor"] = vecToJson(environment.bottomColor);
+    object["solidColor"] = vecToJson(environment.solidColor);
+    object["imagePath"] = environment.imagePath;
+    object["exposure"] = environment.exposure;
+    object["rotationY"] = environment.rotationY;
+    object["intensity"] = environment.intensity;
+    return object;
+}
+
+Environment environmentFromJson(const QJsonObject& object)
+{
+    Environment environment;
+    environment.mode = environmentModeFromString(object.value("mode").toString("Gradient"));
+    environment.topColor = vecFromJson(object.value("topColor").toObject(), environment.topColor);
+    environment.bottomColor = vecFromJson(object.value("bottomColor").toObject(), environment.bottomColor);
+    environment.solidColor = vecFromJson(object.value("solidColor").toObject(), environment.solidColor);
+    environment.imagePath = object.value("imagePath").toString(environment.imagePath);
+    environment.exposure = object.value("exposure").toDouble(environment.exposure);
+    environment.rotationY = object.value("rotationY").toDouble(environment.rotationY);
+    environment.intensity = object.value("intensity").toDouble(environment.intensity);
+    if ((environment.mode == EnvironmentMode::Image || environment.mode == EnvironmentMode::HDRImage)
+        && !environment.imagePath.isEmpty()
+        && !environment.hasUsableImage()) {
+        environment.mode = EnvironmentMode::Gradient;
+    }
+    return environment;
+}
+
+QString textureTypeToString(TextureType type)
+{
+    switch (type) {
+    case TextureType::Image:
+        return "Image";
+    case TextureType::Checkerboard:
+    default:
+        return "Checkerboard";
+    }
+}
+
+TextureType textureTypeFromString(const QString& value)
+{
+    if (value.compare(QStringLiteral("Image"), Qt::CaseInsensitive) == 0) {
+        return TextureType::Image;
+    }
+    return TextureType::Checkerboard;
+}
+
 QJsonObject materialToJson(const Material& material)
 {
     QJsonObject object;
@@ -71,6 +152,17 @@ QJsonObject materialToJson(const Material& material)
     object["emissionStrength"] = material.emissionStrength;
     object["emissiveColor"] = vecToJson(material.emissionColor);
     object["emissiveIntensity"] = material.emissionStrength;
+    object["useTexture"] = material.useTexture;
+    object["textureType"] = textureTypeToString(material.textureType);
+    object["texturePath"] = material.texturePath;
+    object["textureScale"] = material.textureScale;
+    object["textureOffsetU"] = material.textureOffsetU;
+    object["textureOffsetV"] = material.textureOffsetV;
+    object["textureRotation"] = material.textureRotation;
+    object["textureStrength"] = material.textureStrength;
+    object["fallbackColor"] = vecToJson(material.fallbackColor);
+    object["checkerColorA"] = vecToJson(material.checkerColorA);
+    object["checkerColorB"] = vecToJson(material.checkerColorB);
     return object;
 }
 
@@ -88,6 +180,17 @@ Material materialFromJson(const QJsonObject& object)
     material.emissionStrength = object.contains("emissiveIntensity")
         ? object.value("emissiveIntensity").toDouble(material.emissionStrength)
         : object.value("emissionStrength").toDouble(material.emissionStrength);
+    material.useTexture = object.value("useTexture").toBool(material.useTexture);
+    material.textureType = textureTypeFromString(object.value("textureType").toString(textureTypeToString(material.textureType)));
+    material.texturePath = object.value("texturePath").toString(material.texturePath);
+    material.textureScale = object.value("textureScale").toDouble(material.textureScale);
+    material.textureOffsetU = object.value("textureOffsetU").toDouble(material.textureOffsetU);
+    material.textureOffsetV = object.value("textureOffsetV").toDouble(material.textureOffsetV);
+    material.textureRotation = object.value("textureRotation").toDouble(material.textureRotation);
+    material.textureStrength = object.value("textureStrength").toDouble(material.textureStrength);
+    material.fallbackColor = vecFromJson(object.value("fallbackColor").toObject(), material.fallbackColor);
+    material.checkerColorA = vecFromJson(object.value("checkerColorA").toObject(), material.checkerColorA);
+    material.checkerColorB = vecFromJson(object.value("checkerColorB").toObject(), material.checkerColorB);
     return material;
 }
 
@@ -123,8 +226,12 @@ bool SceneIO::saveToFile(const Scene& scene,
     camera["aspectRatio"] = scene.camera.aspectRatio;
     root["camera"] = camera;
     root["selectedObjectId"] = scene.selectedObjectId;
+    root["environment"] = environmentToJson(scene.environment);
     root["softShadowsEnabled"] = scene.softShadowsEnabled;
     root["areaLightSamples"] = scene.areaLightSamples;
+    root["overlayLabelsEnabled"] = scene.overlayLabelsEnabled;
+    root["overlayShowPosition"] = scene.overlayShowPosition;
+    root["overlayShowMaterialInfo"] = scene.overlayShowMaterialInfo;
 
     QJsonObject bloom;
     bloom["enabled"] = scene.bloomSettings.enabled;
@@ -231,8 +338,12 @@ bool SceneIO::loadFromFile(const QString& fileName,
     loadedScene.camera.fieldOfViewYDegrees = camera.value("fov").toDouble(loadedScene.camera.fieldOfViewYDegrees);
     loadedScene.camera.aspectRatio = camera.value("aspectRatio").toDouble(loadedScene.camera.aspectRatio);
     loadedScene.selectedObjectId = root.value("selectedObjectId").toInt(-1);
+    loadedScene.environment = environmentFromJson(root.value("environment").toObject());
     loadedScene.softShadowsEnabled = root.value("softShadowsEnabled").toBool(loadedScene.softShadowsEnabled);
     loadedScene.areaLightSamples = root.value("areaLightSamples").toInt(loadedScene.areaLightSamples);
+    loadedScene.overlayLabelsEnabled = root.value("overlayLabelsEnabled").toBool(loadedScene.overlayLabelsEnabled);
+    loadedScene.overlayShowPosition = root.value("overlayShowPosition").toBool(loadedScene.overlayShowPosition);
+    loadedScene.overlayShowMaterialInfo = root.value("overlayShowMaterialInfo").toBool(loadedScene.overlayShowMaterialInfo);
 
     const QJsonObject bloom = root.value("bloom").toObject();
     loadedScene.bloomSettings.enabled = bloom.value("enabled").toBool(loadedScene.bloomSettings.enabled);

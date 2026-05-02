@@ -6,6 +6,19 @@
 
 namespace tinyray {
 
+enum class TurntableDirection
+{
+    Clockwise = -1,
+    Counterclockwise = 1
+};
+
+enum class TurntableTargetMode
+{
+    SceneCenter,
+    SelectedObject,
+    CustomTarget
+};
+
 class OrbitCamera
 {
 public:
@@ -15,6 +28,11 @@ public:
     double pitch = 15.0;
     double fov = 45.0;
     Vec3 up = Vec3(0.0, 1.0, 0.0);
+    bool turntableEnabled = false;
+    double turntableSpeed = 24.0;
+    TurntableDirection turntableDirection = TurntableDirection::Counterclockwise;
+    TurntableTargetMode turntableTargetMode = TurntableTargetMode::SceneCenter;
+    Vec3 turntableCustomTarget = Vec3(0.0, 0.0, 0.0);
 
     Vec3 position() const;
     QMatrix4x4 viewMatrix() const;
@@ -23,6 +41,8 @@ public:
     void orbit(double deltaYawDegrees, double deltaPitchDegrees);
     void zoom(double scaleFactor);
     void pan(double deltaRight, double deltaUp);
+    bool updateTurntable(double deltaTimeSeconds);
+    Vec3 resolvedTurntableTarget(const Vec3& sceneCenter, const Vec3* selectedObjectCenter = nullptr) const;
     bool isValid() const;
 
 private:
