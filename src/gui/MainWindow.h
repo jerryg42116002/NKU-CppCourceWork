@@ -61,6 +61,7 @@ private slots:
     void handleSaveImage();
     void handleClearImage();
     void handleToggleRenderPreview();
+    void handleCinematicGlowChanged(bool enabled);
     void handleSaveScene();
     void handleLoadScene();
     void handleAbout();
@@ -113,6 +114,7 @@ private:
     QPushButton* stopButton_ = nullptr;
     QPushButton* saveImageButton_ = nullptr;
     QPushButton* toggleRenderPreviewButton_ = nullptr;
+    QCheckBox* cinematicGlowCheckBox_ = nullptr;
     QPushButton* saveSceneButton_ = nullptr;
     QPushButton* loadSceneButton_ = nullptr;
     QPushButton* clearButton_ = nullptr;

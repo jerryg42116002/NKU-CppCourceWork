@@ -237,9 +237,11 @@ bool SceneIO::saveToFile(const Scene& scene,
 
     QJsonObject bloom;
     bloom["enabled"] = scene.bloomSettings.enabled;
+    bloom["cinematicGlowEnabled"] = scene.bloomSettings.cinematicGlowEnabled;
     bloom["exposure"] = scene.bloomSettings.exposure;
     bloom["threshold"] = scene.bloomSettings.threshold;
     bloom["strength"] = scene.bloomSettings.strength;
+    bloom["cinematicGlowStrength"] = scene.bloomSettings.cinematicGlowStrength;
     bloom["blurPassCount"] = scene.bloomSettings.blurPassCount;
     root["bloom"] = bloom;
 
@@ -351,9 +353,13 @@ bool SceneIO::loadFromFile(const QString& fileName,
 
     const QJsonObject bloom = root.value("bloom").toObject();
     loadedScene.bloomSettings.enabled = bloom.value("enabled").toBool(loadedScene.bloomSettings.enabled);
+    loadedScene.bloomSettings.cinematicGlowEnabled =
+        bloom.value("cinematicGlowEnabled").toBool(loadedScene.bloomSettings.cinematicGlowEnabled);
     loadedScene.bloomSettings.exposure = bloom.value("exposure").toDouble(loadedScene.bloomSettings.exposure);
     loadedScene.bloomSettings.threshold = bloom.value("threshold").toDouble(loadedScene.bloomSettings.threshold);
     loadedScene.bloomSettings.strength = bloom.value("strength").toDouble(loadedScene.bloomSettings.strength);
+    loadedScene.bloomSettings.cinematicGlowStrength =
+        bloom.value("cinematicGlowStrength").toDouble(loadedScene.bloomSettings.cinematicGlowStrength);
     loadedScene.bloomSettings.blurPassCount = bloom.value("blurPassCount").toInt(loadedScene.bloomSettings.blurPassCount);
 
     const QJsonObject renderSettings = root.value("renderSettings").toObject();

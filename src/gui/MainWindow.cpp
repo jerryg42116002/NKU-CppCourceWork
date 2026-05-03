@@ -343,6 +343,8 @@ void MainWindow::createControlPanel()
     stopButton_ = new QPushButton(QStringLiteral("Stop"), outputGroup);
     saveImageButton_ = new QPushButton(QStringLiteral("Save Image"), outputGroup);
     toggleRenderPreviewButton_ = new QPushButton(QStringLiteral("Show Result Preview"), outputGroup);
+    cinematicGlowCheckBox_ = new QCheckBox(QStringLiteral("CPU Cinematic Glow"), outputGroup);
+    cinematicGlowCheckBox_->setChecked(false);
     saveSceneButton_ = new QPushButton(QStringLiteral("Save Scene"), outputGroup);
     loadSceneButton_ = new QPushButton(QStringLiteral("Load Scene"), outputGroup);
     clearButton_ = new QPushButton(QStringLiteral("Clear"), outputGroup);
@@ -351,6 +353,7 @@ void MainWindow::createControlPanel()
     outputLayout->addWidget(stopButton_);
     outputLayout->addWidget(saveImageButton_);
     outputLayout->addWidget(toggleRenderPreviewButton_);
+    outputLayout->addWidget(cinematicGlowCheckBox_);
     outputLayout->addWidget(saveSceneButton_);
     outputLayout->addWidget(loadSceneButton_);
     outputLayout->addWidget(clearButton_);
@@ -371,6 +374,7 @@ void MainWindow::createControlPanel()
     connect(stopButton_, &QPushButton::clicked, this, &MainWindow::handleStop);
     connect(saveImageButton_, &QPushButton::clicked, this, &MainWindow::handleSaveImage);
     connect(toggleRenderPreviewButton_, &QPushButton::clicked, this, &MainWindow::handleToggleRenderPreview);
+    connect(cinematicGlowCheckBox_, &QCheckBox::toggled, this, &MainWindow::handleCinematicGlowChanged);
     connect(saveSceneButton_, &QPushButton::clicked, this, &MainWindow::handleSaveScene);
     connect(loadSceneButton_, &QPushButton::clicked, this, &MainWindow::handleLoadScene);
     connect(clearButton_, &QPushButton::clicked, this, &MainWindow::handleClearImage);
@@ -612,6 +616,20 @@ void MainWindow::handleToggleRenderPreview()
     }
 }
 
+void MainWindow::handleCinematicGlowChanged(bool enabled)
+{
+    scene_.bloomSettings.cinematicGlowEnabled = enabled;
+    highQualityImage_ = QImage();
+    if (scenePanel_ != nullptr) {
+        scenePanel_->setScene(scene_);
+    }
+    if (statusLabel_ != nullptr) {
+        statusLabel_->setText(enabled
+            ? QStringLiteral("CPU cinematic glow enabled")
+            : QStringLiteral("CPU cinematic glow disabled"));
+    }
+}
+
 void MainWindow::handleSaveScene()
 {
     syncCurrentViewportCameraToScene();
@@ -678,6 +696,9 @@ void MainWindow::handleLoadScene()
         const double focusDistance = std::isfinite(scene_.camera.focusDistance) ? scene_.camera.focusDistance : 5.0;
         focusDistanceSpinBox_->setValue(std::clamp(focusDistance, focusDistanceSpinBox_->minimum(), focusDistanceSpinBox_->maximum()));
     }
+    if (cinematicGlowCheckBox_ != nullptr) {
+        cinematicGlowCheckBox_->setChecked(scene_.bloomSettings.cinematicGlowEnabled);
+    }
     highQualityImage_ = QImage();
     if (renderWidget_ != nullptr) {
         renderWidget_->clearImage();
@@ -711,6 +732,9 @@ void MainWindow::handleSceneChanged(const tinyray::Scene& scene)
 
     realTimeRenderWidget_->setScene(scene_);
     scenePanel_->setSelectedObjectId(scene_.selectedObjectId);
+    if (cinematicGlowCheckBox_ != nullptr) {
+        cinematicGlowCheckBox_->setChecked(scene_.bloomSettings.cinematicGlowEnabled);
+    }
     highQualityImage_ = QImage();
     if (renderWidget_ != nullptr) {
         renderWidget_->clearImage();

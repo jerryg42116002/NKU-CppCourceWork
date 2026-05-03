@@ -17,7 +17,7 @@ class ImagePostProcess
 public:
     static QImage applyBloom(const QImage& source, const BloomSettings& settings)
     {
-        if (!settings.enabled || source.isNull()) {
+        if ((!settings.enabled && !settings.cinematicGlowEnabled) || source.isNull()) {
             return source;
         }
 
@@ -28,7 +28,9 @@ public:
             return input;
         }
 
-        const double threshold = settings.safeThreshold();
+        const double threshold = settings.cinematicGlowEnabled
+            ? std::min(settings.safeThreshold(), 0.78)
+            : settings.safeThreshold();
         std::vector<Vec3> scene(static_cast<std::size_t>(width * height));
         std::vector<Vec3> bright(scene.size());
 
@@ -51,13 +53,39 @@ public:
             blurred = blurVertical(blurred, width, height);
         }
 
+        std::vector<Vec3> wideGlow = blurred;
+        if (settings.cinematicGlowEnabled) {
+            const int widePasses = std::min(blurPasses + 4, 16);
+            for (int pass = 0; pass < widePasses; ++pass) {
+                wideGlow = blurHorizontal(wideGlow, width, height);
+                wideGlow = blurVertical(wideGlow, width, height);
+            }
+        }
+
         QImage output(width, height, QImage::Format_RGB32);
         const double strength = settings.safeStrength();
+        const double glowStrength = settings.safeCinematicGlowStrength();
         for (int y = 0; y < height; ++y) {
             QRgb* row = reinterpret_cast<QRgb*>(output.scanLine(y));
             for (int x = 0; x < width; ++x) {
                 const std::size_t index = static_cast<std::size_t>(y * width + x);
-                Vec3 color = scene[index] + blurred[index] * strength;
+                Vec3 color = scene[index];
+                if (settings.enabled) {
+                    color += blurred[index] * strength;
+                }
+                if (settings.cinematicGlowEnabled) {
+                    const Vec3 centerGlow = wideGlow[index] * Vec3(0.92, 0.96, 1.0);
+                    const Vec3 warmFringe =
+                        sampleClamped(wideGlow, width, height, x + 3, y) * Vec3(1.0, 0.46, 0.18);
+                    const Vec3 coolFringe =
+                        sampleClamped(wideGlow, width, height, x - 3, y) * Vec3(0.18, 0.50, 1.0);
+                    const Vec3 verticalAura =
+                        sampleClamped(wideGlow, width, height, x, y - 4) * Vec3(0.60, 0.30, 1.0);
+                    color += (centerGlow * 0.78
+                              + warmFringe * 0.18
+                              + coolFringe * 0.22
+                              + verticalAura * 0.16) * glowStrength;
+                }
                 row[x] = vec3ToPixel(color);
             }
         }
