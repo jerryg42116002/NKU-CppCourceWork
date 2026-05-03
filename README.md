@@ -20,6 +20,8 @@ TinyRay Studio 是一个3D计算机图形学绘图工具，用于交互式编辑
   <br>
   <img width="1280" height="720" alt="3" src="https://github.com/user-attachments/assets/70eb5f10-b6ad-4161-81e7-6ad89460654d" />
   <br>
+  <img width="1280" height="720" alt="7" src="https://github.com/user-attachments/assets/de5aea4a-a7cc-4e3a-b657-96d0a72e54af" />
+  <br>
   <img width="1280" height="720" alt="4" src="https://github.com/user-attachments/assets/fe07f47c-4db3-4493-bab9-92865a858ab1" />
 
 
