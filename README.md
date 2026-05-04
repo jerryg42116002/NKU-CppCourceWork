@@ -111,6 +111,10 @@ TinyRay Studio 是一个3D计算机图形学绘图工具，用于交互式编辑
 
 项目使用 Qt Widgets、QOpenGLWidget、OpenGL 和标准 C++。不使用 CUDA、OptiX、Vulkan、DirectX、Qt WebEngine 或游戏引擎。
 
+## 快速开始
+
+下载**程序.zip**，之后运行**TinyRayStudio.exe**
+
 ## 构建方法
 
 进入项目根目录：
